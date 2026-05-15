@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Trail Pace Planner</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-<link rel="stylesheet" href="./styles.css?v=v35" />
+<link rel="stylesheet" href="./styles.css?v=v36" />
 </head>
 <body x-data="trailPlanner" :class="{ 'has-gpx': !!gpx, 'light-mode': theme === 'light' }">
 
@@ -1304,7 +1304,7 @@
 </script>
 <script type="module">
   import Alpine from 'https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm.js';
-  import { trailPlannerComponent } from './src/app.js?v=v35';
+  import { trailPlannerComponent } from './src/app.js?v=v36';
   window.Alpine = Alpine;
   Alpine.data('trailPlanner', trailPlannerComponent);
   Alpine.start();

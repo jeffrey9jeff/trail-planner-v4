@@ -265,16 +265,17 @@ export function shareView() {
       const sc = scenarios[sel];
       if (!sc || sel === activeKey) {
         // Use the top-level plan (= active scenario already resolved).
+        // Top-level `goal.timeSec` from the planner is MOVING time (model
+        // working value), which is what gapForTargetTime expects.
         return plan;
       }
-      // Overlay the selected scenario onto a shallow copy.
-      const goal = {
-        mode: sc.mode || plan.goal?.mode || 'time',
-        timeSec: Number(sc.timeSec) || plan.goal?.timeSec || 0,
-        paceSecPerKm: Number(sc.paceSecPerKm) || plan.goal?.paceSecPerKm || 0,
-        gapSecPerKm: Number(sc.gapSecPerKm) || plan.goal?.gapSecPerKm || 0,
-      };
-      // Apply this scenario's cpStops to a fresh checkpoints copy.
+      // Overlay the selected scenario onto a shallow copy. The planner
+      // stores `scenarios[k].timeSec` as the USER-FACING goal (elapsed =
+      // moving + stoppage), so when we overlay a non-active scenario we
+      // need to subtract the scenario's stoppage from timeSec before
+      // handing it to gapForTargetTime (which targets moving time).
+      // paceSecPerKm and gapSecPerKm are moving-rates already — no
+      // adjustment needed.
       const cpStops = sc.cpStops || {};
       const checkpoints = (plan.checkpoints || []).map(cp => {
         const copy = { ...cp };
@@ -283,6 +284,19 @@ export function shareView() {
         }
         return copy;
       });
+      const totalStoppage = checkpoints.reduce(
+        (sum, c) => sum + (Number(c.stoppageSec) || 0), 0,
+      );
+      const scTimeSec = Number(sc.timeSec) || 0;
+      const movingTimeSec = scTimeSec > totalStoppage
+        ? scTimeSec - totalStoppage
+        : scTimeSec;
+      const goal = {
+        mode: sc.mode || plan.goal?.mode || 'time',
+        timeSec: movingTimeSec,
+        paceSecPerKm: Number(sc.paceSecPerKm) || plan.goal?.paceSecPerKm || 0,
+        gapSecPerKm: Number(sc.gapSecPerKm) || plan.goal?.gapSecPerKm || 0,
+      };
       return {
         ...plan,
         goal,

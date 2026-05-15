@@ -408,6 +408,8 @@ const SEED_TASKS = [
   { id: 130, text: 'V4: Added .github/workflows/pages.yml + DEPLOY-SHARE.md — three paths for getting the crew share view onto a phone: AirDrop standalone HTML, Netlify Drop, GitHub Pages auto-deploy.', done: true },
   // V4 v4.8
   { id: 131, text: 'V4: Nutrition drop-bag notes are user-controlled only — auto-restock still fills gel/fluid numbers but no longer overwrites the notes field on every recompute.', done: true },
+  // V4 v4.9
+  { id: 132, text: 'V4: Share view scenario switch — non-active scenarios were using elapsed-goal time as moving target, so Plan A/B/C finish times were off by total stoppage. Fixed _effectivePlan to subtract scenario stoppage before handing timeSec to gapForTargetTime.', done: true },
 ];
 
 export function loadTasks() {
