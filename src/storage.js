@@ -406,6 +406,8 @@ const SEED_TASKS = [
   { id: 128, text: 'V4: Cross-chart hover wiring was AFTER the staticPlan early-return in shareView.init — so standalone HTML never wired the bus. Moved to top of init() so live + standalone both wire it.', done: true },
   { id: 129, text: 'V4: 3D CP labels in share view get the planner\'s "little box" styling (background + accent border + bold code). CSS inlined in share.html so it works even when styles.css is excluded (standalone export). Resolver wraps code in <strong> for the accent.', done: true },
   { id: 130, text: 'V4: Added .github/workflows/pages.yml + DEPLOY-SHARE.md — three paths for getting the crew share view onto a phone: AirDrop standalone HTML, Netlify Drop, GitHub Pages auto-deploy.', done: true },
+  // V4 v4.8
+  { id: 131, text: 'V4: Nutrition drop-bag notes are user-controlled only — auto-restock still fills gel/fluid numbers but no longer overwrites the notes field on every recompute.', done: true },
 ];
 
 export function loadTasks() {

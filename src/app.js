@@ -24,7 +24,7 @@ import {
   loadTheme, saveTheme,
   loadPanelOrder, savePanelOrder,
   snapshot as makeSnapshot,
-} from './storage.js?v=v34';
+} from './storage.js?v=v35';
 import { loadPriorRunFile, alignPriorToSegments } from './priorRun.js?v=v17';
 // === Spectator / Crew Share (V4 Phase 1) ============================
 // Local-first store adapter behind a one-line swap. createRun behaves as
@@ -34,8 +34,8 @@ import {
   createRun as shareCreateRun,
   updateRun as shareUpdateRun,
   loadShareSelf, saveShareSelf, clearShareSelf,
-} from './share/index.js?v=v34';
-import { filterSnapshotForShare } from './share/snapshotFilter.js?v=v34';
+} from './share/index.js?v=v35';
+import { filterSnapshotForShare } from './share/snapshotFilter.js?v=v35';
 
 minettiSelfTest();
 
@@ -1273,7 +1273,9 @@ export function trailPlannerComponent() {
             }
           }
           here.src.fluidL = Number((newFluidL).toFixed(3));
-          here.src.notes = this._composeAutoNotes(here.src, gelTypes, fluidGPerL, here.uid === '__START__');
+          // V4 v4.8: notes are user-controlled only — no longer auto-filled
+          // on auto-restock. Auto-fill still sets the gel/fluid numbers,
+          // but anything typed in the notes column stays as-is.
           here.deficit = 0;
           here.surplus = 0;
         } else {
