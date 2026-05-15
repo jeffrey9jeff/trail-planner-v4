@@ -236,7 +236,11 @@ const bundleScript =
 let html = fs.readFileSync(path.join(V4_DIR, 'share.html'), 'utf8');
 html = html.replace(/<link rel="stylesheet" href="\.\/styles\.css[^"]*"[^>]*>/, '');
 html = html.replace(/<script type="importmap">[\s\S]*?<\/script>/, '');
-html = html.replace(/<!--[^]*?es-module-shims[^]*?-->\s*/, '');
+// v4.10 fix: anchor on `es-module-shims` IMMEDIATELY after `<!--` so we
+// don't accidentally devour every `<!-- … -->` comment from the first one
+// onwards (the previous lazy pattern matched from any `<!--` it could
+// reach forward to `es-module-shims`, eating all body templates).
+html = html.replace(/<!--\s*es-module-shims[\s\S]*?-->\s*/, '');
 html = html.replace(/<script[^>]*es-module-shims[^>]*>\s*<\/script>/, '');
 html = html.replace(
   /<section class="share-panel chart-panel">\s*<div class="share-panel-header chart-panel-header" @click="toggleChartPanel\('p3d'\)">[\s\S]*?<\/section>/,

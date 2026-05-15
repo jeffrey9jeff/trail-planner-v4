@@ -3850,9 +3850,12 @@ export function trailPlannerComponent() {
         html = html.replace(/<script type="importmap">[\s\S]*?<\/script>/, '');
 
         // Drop the es-module-shims polyfill + its explanatory comment —
-        // no modules in the export, so the polyfill is dead weight and
-        // mentioning "importmap" in the comment confuses sniff-tests.
-        html = html.replace(/<!--[^]*?es-module-shims[^]*?-->\s*/, '');
+        // no modules in the export, so the polyfill is dead weight.
+        // v4.10 fix: regex MUST anchor on `es-module-shims` IMMEDIATELY
+        // after `<!--`, otherwise the lazy quantifier walks forward from
+        // the FIRST `<!--` in the document (e.g. `<!-- Header -->`) and
+        // eats every body template/section up to the polyfill comment.
+        html = html.replace(/<!--\s*es-module-shims[\s\S]*?-->\s*/, '');
         html = html.replace(/<script[^>]*es-module-shims[^>]*>\s*<\/script>/, '');
 
         // Drop the 3D panel (no profile3d in the bundle).
