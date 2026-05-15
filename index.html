@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trail Pace Planner</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<link rel="stylesheet" href="./styles.css?v=v34" />
+</head>
+<body x-data="trailPlanner" :class="{ 'has-gpx': !!gpx, 'light-mode': theme === 'light' }">
+
+<div class="sticky-top">
+<header class="app-header">
+  <h1>Trail Pace Planner <span style="font-size:11px;color:var(--accent);font-weight:700;letter-spacing:0.05em;">V4</span></h1>
+  <div class="header-actions">
+    <label class="btn">
+      <input type="file" accept=".gpx" @change="onLoadGPX($event)" hidden />
+      Load GPX
+    </label>
+    <label class="btn" :class="{ disabled: !gpx }" :title="gpx ? 'Drop a .fit (or timestamped .gpx) of a prior race or training run on this course to overlay actual pace vs plan' : 'Load a course GPX first'">
+      <input type="file" accept=".fit,.gpx" @change="onLoadPriorRun($event)" :disabled="!gpx || priorRunLoading" hidden />
+      <span x-show="!priorRunLoading">Load prior run</span>
+      <span x-show="priorRunLoading">Loading…</span>
+    </label>
+    <span class="prior-badge" x-show="priorRun" x-transition.opacity>
+      <strong x-text="priorRun?.name || ''"></strong>
+      <small x-text="priorRun ? formatTime(priorRun.totalSec) : ''"></small>
+      <em class="hr-hint" x-show="priorRun && priorRun.source === 'fit' && !priorHasHR" title="Re-drop the .fit file to extract heart rate (this prior was saved before HR support was added)">↻ HR</em>
+      <button type="button" class="btn-x" @click="clearPriorRun()" title="Clear prior run">×</button>
+    </span>
+    <button class="btn icon" @click="undo()" :disabled="!canUndo" title="Undo (Ctrl+Z)">↶</button>
+    <button class="btn icon" @click="redo()" :disabled="!canRedo" title="Redo (Ctrl+Y)">↷</button>
+    <button class="btn" @click="exportJSON()" :disabled="!gpx">Export JSON</button>
+    <label class="btn">
+      <input type="file" accept=".json,application/json" @change="importJSON($event)" hidden />
+      Import JSON
+    </label>
+    <button class="btn" @click="loadPreset()" :disabled="!gpx">UTA100 preset</button>
+
+    <div class="dropdown" @click.outside="showHowTo = false; howToExpanded = null">
+      <button class="btn" @click="showHowTo = !showHowTo; showHistory = false; showTasks = false; howToExpanded = null">How To <span class="caret">▼</span></button>
+      <div class="dropdown-panel wide howto-panel" x-show="showHowTo" x-transition.opacity>
+        <div class="dropdown-header"><strong>How to use this app</strong></div>
+        <template x-for="s in howToSections" :key="s.key">
+          <div class="howto-item" :class="{ expanded: howToExpanded === s.key }">
+            <div class="howto-row">
+              <button class="howto-link" @click="goToSection(s.key); showHowTo = false; howToExpanded = null"
+                      x-text="s.title"></button>
+              <button class="btn-x howto-more" @click="howToExpanded = (howToExpanded === s.key ? null : s.key)"
+                      :title="howToExpanded === s.key ? 'Less' : 'More'"
+                      x-text="howToExpanded === s.key ? '−' : '+'"></button>
+            </div>
+            <div class="howto-short" x-text="s.short"></div>
+            <div class="howto-long" x-show="howToExpanded === s.key" x-transition.opacity x-text="s.long"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="dropdown" @click.outside="showHistory = false">
+      <button class="btn" @click="showHistory = !showHistory; showTasks = false">History <span class="caret">▼</span></button>
+      <div class="dropdown-panel wide" x-show="showHistory" x-transition.opacity>
+        <div class="dropdown-header">
+          <strong>Saved versions</strong>
+          <button class="btn small inline" @click="saveCurrentVersion()" :disabled="!gpx">+ Save current</button>
+        </div>
+        <template x-if="history.length === 0">
+          <div class="dropdown-empty">No saved versions yet.</div>
+        </template>
+        <template x-for="entry in history" :key="entry.id">
+          <div class="history-row">
+            <button class="history-restore" @click="restoreVersion(entry)">
+              <strong x-text="entry.gpxName || 'plan'"></strong>
+              <span class="history-meta">
+                <em x-text="entry.label"></em>
+                <small x-text="(new Date(entry.savedAt)).toLocaleString()"></small>
+                <small>finish <span x-text="entry.finishETA || '—'"></span></small>
+              </span>
+            </button>
+            <button class="btn-x" @click="deleteVersion(entry.id)" title="Delete">×</button>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="dropdown" @click.outside="showTasks = false">
+      <button class="btn" @click="showTasks = !showTasks; showHistory = false">
+        Updates <span class="badge" x-text="tasks.filter(t => !t.done).length" x-show="tasks.filter(t => !t.done).length > 0"></span> <span class="caret">▼</span>
+      </button>
+      <div class="dropdown-panel wide" x-show="showTasks" x-transition.opacity>
+        <div class="dropdown-header">
+          <strong>Software updates</strong>
+          <small><span x-text="tasks.filter(t => t.done).length"></span>/<span x-text="tasks.length"></span> done</small>
+        </div>
+        <ul class="task-list">
+          <template x-for="task in tasks" :key="task.id">
+            <li :class="{ done: task.done }">
+              <input type="checkbox" x-model="task.done" @change="persistTasks()" />
+              <span x-text="task.text" @dblclick="editTask(task)" :title="'Double-click to edit'"></span>
+              <button class="btn-x" @click="removeTask(task.id)" title="Delete">×</button>
+            </li>
+          </template>
+        </ul>
+        <input class="task-input" type="text" placeholder="+ Add a feature request… (Enter to save)"
+               @keydown.enter="addTask($event)" />
+      </div>
+    </div>
+
+    <button class="btn icon symbol" @click="expandAll()" :disabled="!gpx" title="Expand all panels">+</button>
+    <button class="btn icon symbol" @click="collapseAll()" :disabled="!gpx" title="Collapse all panels">−</button>
+    <button class="btn ghost" @click="resetPlan()" :disabled="!gpx">Reset</button>
+    <button class="btn icon" @click="toggleTheme()" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
+      <span x-text="theme === 'dark' ? '☀' : '☾'"></span>
+    </button>
+  </div>
+</header>
+
+<template x-if="!gpx">
+  <section class="empty-state"
+           @dragover.prevent="dragOver = true"
+           @dragleave="dragOver = false"
+           @drop.prevent="onDropGPX($event)"
+           :class="{ dragging: dragOver }">
+    <h2>Drop in a GPX file to begin</h2>
+    <p>Drag a <code>.gpx</code> file here, or use the <strong>Load GPX</strong> button above.</p>
+    <p class="hint">Plans autosave to your browser. Use <strong>Export JSON</strong> to back up or share.</p>
+  </section>
+</template>
+
+<div class="sticky-summary" x-show="gpx">
+  <div class="ss-cell"><strong x-text="gpx ? formatDistance(gpx.totalDistanceKm) : ''"></strong> total</div>
+  <div class="ss-cell">Gain <strong x-text="gpx ? Math.round(gpx.totalGainM) + ' m' : ''"></strong></div>
+  <div class="ss-cell">Loss <strong x-text="gpx ? Math.round(gpx.totalLossM) + ' m' : ''"></strong></div>
+  <div class="ss-cell">Moving <strong x-text="formatTime(totalSec)"></strong></div>
+  <div class="ss-cell">Stops <strong x-text="formatTime(totalStoppage)"></strong></div>
+  <div class="ss-cell">Elapsed <strong x-text="formatTime(totalSec + totalStoppage)"></strong></div>
+  <div class="ss-cell">Finish ETA <strong x-text="finishETA"></strong></div>
+  <div class="ss-cell">Moving pace <strong x-text="gpx && gpx.totalDistanceKm > 0 ? formatPace(totalSec / gpx.totalDistanceKm) + '/km' : '—'"></strong></div>
+  <div class="ss-cell">Moving GAP <strong x-text="formatPace(goal.gapSecPerKm) + '/km'"></strong></div>
+  <div class="ss-cell">Elapsed pace <strong x-text="gpx && gpx.totalDistanceKm > 0 ? formatPace((totalSec + totalStoppage) / gpx.totalDistanceKm) + '/km' : '—'"></strong></div>
+  <div class="ss-cell" :class="{ 'edit-flag': overrides.length > 0 }">Edits <strong x-text="overrides.length"></strong></div>
+  <div class="ss-cell" :class="{ 'edit-flag': Object.keys(gradientPaceOverrides).length > 0 }">Gradient <strong x-text="Object.keys(gradientPaceOverrides).length"></strong></div>
+  <div class="ss-cell" :class="{ 'edit-flag': technicalIndices.length > 0 }">Tech <strong x-text="technicalIndices.length"></strong></div>
+  <div class="ss-cell ss-active">Active <strong x-text="scenarios[activeScenario]?.name || activeScenario"></strong></div>
+</div>
+</div>
+
+<template x-if="gpx">
+  <main class="layout"
+        @dragover.prevent="dragOver = true"
+        @dragleave="dragOver = false"
+        @drop.prevent="onDropGPX($event)"
+        @keydown.window.ctrl.z.prevent="undo()"
+        @keydown.window.ctrl.y.prevent="redo()">
+
+    <section id="panel-goal" class="panel" :class="{ collapsed: isCollapsed('goal'), 'drop-target': _dragOverPanelKey === 'goal' }" :style="'order:' + panelOrderIdx('goal')" @dragover="onPanelDragOver('goal', $event)" @dragleave="onPanelDragLeave('goal')" @drop="onPanelDrop('goal', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('goal')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('goal', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>Goal &amp; biases</span>
+        <button class="chevron" x-text="isCollapsed('goal') ? '▶' : '▼'"></button>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('goal')">
+
+        <div class="alert" x-show="overrides.length > 0" x-transition.opacity>
+          ⚠ <strong x-text="overrides.length"></strong> per-segment edit<span x-show="overrides.length !== 1">s</span> active.
+          Goal/bias changes recompute around them.
+          <button class="btn small inline" @click="clearAllOverrides()">Clear all edits</button>
+        </div>
+
+        <!-- Scenarios grid: Plan A is the primary input row, then B / C / Prior
+             stack below. Race Start and Split Size are shared across all
+             scenarios and live below the sliders. -->
+        <div class="scenarios-grid">
+          <div class="scenarios-row scenarios-header">
+            <span></span>
+            <span>Plan</span>
+            <span>Goal time</span>
+            <span>Goal pace (m:ss/km)</span>
+            <span>Goal GAP (m:ss/km)</span>
+            <span>Stoppage</span>
+            <span></span>
+          </div>
+          <template x-for="key in ['A', 'B', 'C']" :key="key">
+            <div class="scenarios-row" :class="{ active: activeScenario === key }">
+              <div class="col-radio"><input type="radio" name="scenario" :checked="activeScenario === key" @change="setActiveScenario(key)" :disabled="!gpx" /></div>
+              <div class="col-name"><input type="text" class="scenario-name" x-model.lazy="scenarios[key].name" @keydown.enter="$event.target.blur()" /></div>
+              <div class="col-input">
+                <div class="num-input">
+                  <input type="text" :value="scenarios[key].timeSec ? formatTime(scenarios[key].timeSec) : ''" @change="onScenarioTimeEdit(key, $event)" placeholder="—" />
+                  <button type="button" class="step up" @click="bumpScenarioTime(key, 60)" :disabled="!gpx" title="+60s">▲</button>
+                  <button type="button" class="step dn" @click="bumpScenarioTime(key, -60)" :disabled="!gpx" title="−60s">▼</button>
+                </div>
+              </div>
+              <div class="col-input">
+                <div class="num-input">
+                  <input type="text" :value="scenarios[key].paceSecPerKm ? formatPace(scenarios[key].paceSecPerKm) : ''" @change="onScenarioPaceEdit(key, $event)" placeholder="—" />
+                  <button type="button" class="step up" @click="bumpScenarioPace(key, -5)" :disabled="!gpx" title="Faster (−5s)">▲</button>
+                  <button type="button" class="step dn" @click="bumpScenarioPace(key, 5)" :disabled="!gpx" title="Slower (+5s)">▼</button>
+                </div>
+              </div>
+              <div class="col-input">
+                <div class="num-input">
+                  <input type="text" :value="scenarios[key].gapSecPerKm ? formatPace(scenarios[key].gapSecPerKm) : ''" @change="onScenarioGapEdit(key, $event)" placeholder="—" />
+                  <button type="button" class="step up" @click="bumpScenarioGap(key, -5)" :disabled="!gpx" title="Faster (−5s)">▲</button>
+                  <button type="button" class="step dn" @click="bumpScenarioGap(key, 5)" :disabled="!gpx" title="Slower (+5s)">▼</button>
+                </div>
+              </div>
+              <div class="col-input num-readonly" x-text="formatTime(scenarioStoppageSec(key))" :title="'Total stoppage included in goal time. Edit per-CP stops in the Checkpoints panel.'"></div>
+              <div class="col-act">
+                <button type="button" class="btn-x" @click="saveCurrentToScenario(key)" :disabled="!gpx" title="Snapshot current goal into this row">↓</button>
+                <!-- "Match A" — copies Plan A's per-segment overrides,
+                     gradient overrides, technical flags, prior-matched
+                     indices, AND pace shift into this scenario. Only on
+                     B/C rows. Lets Jeff fork A as a starting point. -->
+                <button type="button" class="btn-x match-a" x-show="key !== 'A'"
+                        @click="matchScenarioToA(key)" :disabled="!gpx"
+                        title="Copy Plan A's per-segment edits, gradient/technical overrides, and pace shift into this row">≈A</button>
+              </div>
+            </div>
+          </template>
+          <div class="scenarios-row prior-row" :class="{ active: activeScenario === 'prior', disabled: !priorRun }">
+            <div class="col-radio"><input type="radio" name="scenario" :checked="activeScenario === 'prior'" @change="setActiveScenario('prior')" :disabled="!priorRun" /></div>
+            <div class="col-name">
+              <strong>Prior race</strong>
+              <em x-show="priorRun" x-text="priorRun?.name ? '· ' + priorRun.name : ''"></em>
+              <em x-show="!priorRun" class="hint">(load a .fit/.gpx to enable)</em>
+            </div>
+            <div class="col-input num-readonly" x-text="priorRun ? formatTime(priorRun.totalElapsedTime || priorRun.totalSec) : '—'"></div>
+            <div class="col-input num-readonly" x-text="priorRun ? formatPace(priorRun.totalSec / priorRun.totalDistanceKm) : '—'"></div>
+            <div class="col-input num-readonly" x-text="priorRun ? formatPace(priorRaceGap) : '—'"></div>
+            <div class="col-input num-readonly" x-text="formatTime(scenarioStoppageSec('prior'))"></div>
+            <div class="col-act"></div>
+          </div>
+        </div>
+        <!-- Per-scenario pace shift (V4 v4.2). Three modes: GAP shift
+             leaves overrides untouched (changes defaults only); per-km %
+             and per-km second shifts apply to ALL segments uniformly
+             (including overrides) — so Jeff can "shift my whole plan
+             5 minutes faster" without resetting individual edits. -->
+        <div class="pace-shift-row">
+          <div class="pace-shift-label">
+            <span>Pace shift</span>
+            <em class="hint" x-text="'(' + (scenarios[activeScenario]?.name || activeScenario) + ')'"></em>
+          </div>
+          <div class="pace-shift-segmented">
+            <button :class="{ active: paceShift.mode === 'gap' }" @click="setPaceShiftMode('gap')" :disabled="!gpx"
+                    title="Add seconds/km to base GAP. Per-segment overrides keep their values; non-overridden segments shift.">GAP</button>
+            <button :class="{ active: paceShift.mode === 'percent' }" @click="setPaceShiftMode('percent')" :disabled="!gpx"
+                    title="Multiply every segment pace (overrides included) by (1 + value/100). Use to shift the whole plan by a percentage.">per-km %</button>
+            <button :class="{ active: paceShift.mode === 'seconds' }" @click="setPaceShiftMode('seconds')" :disabled="!gpx"
+                    title="Add seconds to every segment pace (overrides included). Use to shift the whole plan by a fixed amount.">per-km sec</button>
+          </div>
+          <div class="num-input pace-shift-input">
+            <input type="number"
+                   :step="paceShift.mode === 'percent' ? '0.5' : '1'"
+                   :value="paceShift.value"
+                   @change="setPaceShiftValue($event.target.value); snapshotThen(()=>{})"
+                   :disabled="!gpx"
+                   :placeholder="paceShift.mode === 'percent' ? '0' : '0'" />
+            <span class="unit" x-text="paceShift.mode === 'percent' ? '%' : 's/km'"></span>
+            <button class="step up" @click="bumpPaceShiftValue(paceShift.mode === 'percent' ? 0.5 : 1)" :disabled="!gpx" title="Slower">▲</button>
+            <button class="step dn" @click="bumpPaceShiftValue(paceShift.mode === 'percent' ? -0.5 : -1)" :disabled="!gpx" title="Faster">▼</button>
+          </div>
+          <span class="pace-shift-impact" x-show="paceShift.value !== 0" x-text="(paceShiftFinishDelta > 0 ? '+' : '−') + formatTime(Math.abs(paceShiftFinishDelta)) + ' total'"></span>
+          <button class="btn small ghost" @click="resetPaceShift()" :disabled="!gpx || paceShift.value === 0">Reset</button>
+        </div>
+
+        <div class="slider-row">
+          <label class="slider">
+            <span>Pace split bias <em x-text="splitLabel"></em></span>
+            <input type="range" min="-1" max="1" step="0.05" x-model.number="splitBias" @input="recompute()" @change="snapshotThen(() => recompute())" />
+            <small>Negative = faster second half · Positive = slow down</small>
+          </label>
+          <label class="slider">
+            <span>Uphill effort <em x-text="effortLabel"></em></span>
+            <input type="range" min="0.7" max="1.3" step="0.02" x-model.number="uphillEffort" @input="recompute()" @change="snapshotThen(() => recompute())" />
+            <small>1.0 = standard Minetti · &gt;1 = push climbs · &lt;1 = hike</small>
+          </label>
+          <label class="slider">
+            <span>Technical penalty <em x-text="technicalLabel"></em></span>
+            <input type="range" min="1.0" max="1.6" step="0.02" x-model.number="technicalSlowdown" @input="recompute()" @change="snapshotThen(() => recompute())" />
+            <small>Multiplier on segments flagged as <strong>technical</strong> in the per-segment plan</small>
+          </label>
+        </div>
+        <!-- Race Start + Split Size + Race Date live below the sliders since
+             they're shared across every scenario. Race Date drives the ETA
+             chart's day/night shading + sunrise/sunset symbols. -->
+        <div class="shared-goal-inputs">
+          <label>
+            <span>Race start</span>
+            <input type="time" step="1" x-model="raceStart" @change="snapshotThen(() => recompute())" />
+          </label>
+          <label>
+            <span>Race date</span>
+            <input type="date" x-model="raceDate" @change="snapshotThen(() => recompute())" title="Used for sunrise/sunset on the ETA chart" />
+          </label>
+          <label>
+            <span>Split size (km)</span>
+            <div class="num-input">
+              <input type="number" min="0.5" max="20" step="0.5" x-model.number="splitKm" @change="rebuildSegments()" />
+              <button class="step up" @click="bumpSplitKm(0.5)">▲</button>
+              <button class="step dn" @click="bumpSplitKm(-0.5)">▼</button>
+            </div>
+          </label>
+        </div>
+
+        <div class="goal-summary">
+          <div><strong x-text="formatDistance(gpx.totalDistanceKm)"></strong> total</div>
+          <div>Gain <strong x-text="Math.round(gpx.totalGainM) + ' m'"></strong></div>
+          <div>Loss <strong x-text="Math.round(gpx.totalLossM) + ' m'"></strong></div>
+          <div>Run <strong x-text="formatTime(totalSec)"></strong></div>
+          <div>Stops <strong x-text="formatTime(totalStoppage)"></strong></div>
+          <div>Finish ETA <strong x-text="finishETA"></strong></div>
+          <div :class="{ 'edit-flag': overrides.length > 0 }">Edits <strong x-text="overrides.length"></strong></div>
+          <div :class="{ 'edit-flag': Object.keys(gradientPaceOverrides).length > 0 }">Gradient <strong x-text="Object.keys(gradientPaceOverrides).length"></strong></div>
+          <div :class="{ 'edit-flag': technicalIndices.length > 0 }">Tech <strong x-text="technicalIndices.length"></strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-nutrition" class="panel" :class="{ collapsed: isCollapsed('nutrition'), 'drop-target': _dragOverPanelKey === 'nutrition' }" :style="'order:' + panelOrderIdx('nutrition')" @dragover="onPanelDragOver('nutrition', $event)" @dragleave="onPanelDragLeave('nutrition')" @drop="onPanelDrop('nutrition', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('nutrition')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('nutrition', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>Nutrition strategy</span>
+        <button class="chevron" x-text="isCollapsed('nutrition') ? '▶' : '▼'"></button>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('nutrition')">
+        <div class="nutrition-grid" @keydown="onNutritionInputKeydown($event)">
+          <label>
+            <span>Gel carbs</span>
+            <div class="num-input">
+              <input type="number" min="0" max="200" step="5" x-model.number="nutrition.gelGPerHr" @change="onNutritionEdit()" />
+              <span class="unit">g/hr</span>
+            </div>
+          </label>
+          <label>
+            <span>Fluid carbs</span>
+            <div class="num-input">
+              <input type="number" min="0" max="200" step="5" x-model.number="nutrition.fluidGPerHr" @change="onNutritionEdit()" />
+              <span class="unit">g/hr</span>
+            </div>
+          </label>
+          <label>
+            <span>Fluid intake</span>
+            <div class="num-input">
+              <input type="number" min="0" max="3" step="0.05" x-model.number="nutrition.fluidLPerHr" @change="onNutritionEdit()" />
+              <span class="unit">L/hr</span>
+            </div>
+          </label>
+        </div>
+        <div class="nutrition-summary">
+          <div>Combined target <strong x-text="nutritionTotals.combinedGPerHr.toFixed(0) + ' g/hr'"></strong></div>
+          <div>Primary fluid <strong x-text="nutritionTotals.primaryFluidGPerL.toFixed(0) + ' g/L'"></strong></div>
+          <div>Gel interval <strong x-text="formatGelInterval(nutritionTotals.gelIntervalSec)"></strong></div>
+          <div>Total fluid <strong x-text="((nutritionTotals.totalFluidG || 0) / nutritionTotals.primaryFluidGPerL).toFixed(1) + ' L'"></strong> <small x-text="'(' + Math.round(nutritionTotals.totalFluidG) + ' g)'"></small></div>
+          <div>Gels needed <strong x-text="nutritionTotals.totalGelsNeeded + ' gels'"></strong> <small x-text="'(' + nutritionTotals.totalGelG + ' g)'"></small></div>
+          <div>Total carbs <strong x-text="Math.round(nutritionTotals.totalCarbsG) + ' g'"></strong></div>
+          <div>Actual <strong x-text="nutritionTotals.actualCombinedGPerHr.toFixed(1) + ' g/hr'"></strong></div>
+        </div>
+
+        <h3 class="sub-header">Drop-bag plan</h3>
+        <p class="hint">
+          <strong>Carbs Restocked</strong> = carbs you'll consume in the next leg, at your target g/hr.
+          Tick <em>auto</em> on a row to auto-fill the primary gel count and primary fluid for that leg.
+          You can still override individual cells (caffeine, water, notes) afterwards.
+        </p>
+        <div class="dropbag-scroll">
+          <table class="dropbag-table" @keydown="onDropbagKeydown($event)">
+            <thead>
+              <tr>
+                <th class="col-loc">Location</th>
+                <th class="col-action col-adjust">
+                  <button type="button" class="adjust-all-btn" :class="{ active: adjustAllActive }" @click="toggleAdjustAll()" title="Toggle ↻ adjust on every drop-bag row at once">↻ adjust all</button>
+                </th>
+                <th class="col-action col-revert"></th>
+                <th class="col-action col-clear">
+                  <button type="button" class="clear-all-btn" @click="clearAllRowSupplies()" title="Clear gels, fluid &amp; water on every drop-bag row at once">clear all</button>
+                </th>
+                <th class="col-auto">restock</th>
+                <th class="col-num">Carbs<br/>required</th>
+                <th class="col-num">Carbs<br/>collected</th>
+                <th class="col-num">Carbs<br/>surplus</th>
+                <th class="col-num">Fluid<br/>required</th>
+                <th class="col-num">Fluid<br/>collected</th>
+                <th class="col-num">Fluid<br/>surplus</th>
+                <template x-for="(t, ti) in nutrition.gelTypes" :key="t.id">
+                  <th class="col-num gel-col">
+                    <div class="gel-head">
+                      <input type="text" class="gel-name" x-model.lazy="t.name" @change="onNutritionEdit()" placeholder="Name" />
+                      <div class="gel-size-row">
+                        <input type="number" min="5" max="80" step="1" class="gel-size" x-model.number="t.sizeG" @change="onNutritionEdit()" />
+                        <span class="unit">g</span>
+                        <button type="button" class="btn-x gel-remove" x-show="nutrition.gelTypes.length > 1" @click="removeGelType(t.id)" title="Remove this gel type">×</button>
+                      </div>
+                    </div>
+                  </th>
+                </template>
+                <th class="col-add"><button type="button" class="btn-add-col" @click="addGelType()" title="Add gel type">+</button></th>
+                <th class="col-num">Primary fluid<br/><small x-text="'(' + nutrition.primaryFluidGPerL + ' g/L)'"></small></th>
+                <th class="col-num">Water<br/><small>(no carbs)</small></th>
+                <th class="col-notes">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="dropbag-start">
+                <td class="col-loc">
+                  <div class="loc-row">
+                    <strong class="loc-name">Start</strong>
+                  </div>
+                  <div class="loc-meta">
+                    <span x-text="'km 0'"></span>
+                    <span x-text="'· ' + raceStart"></span>
+                    <span x-text="'· next refill in ' + formatLegHrs(cpTimeToNext.__START__ || 0)"></span>
+                  </div>
+                </td>
+                <td class="col-action col-adjust">
+                  <button type="button" class="adjust-btn"
+                          :class="{ active: !!nutrition.startInventory.autoAdjust }"
+                          @click="toggleAutoAdjust(nutrition.startInventory)"
+                          title="Auto-adjust: keep total carbs balanced when one input changes">↻ adjust</button>
+                </td>
+                <td class="col-action col-revert">
+                  <button type="button" class="revert-btn"
+                          :class="{ active: nutrition.startInventory.autoRestock && nutrition.startInventory.manualEdit }"
+                          :disabled="!(nutrition.startInventory.autoRestock && nutrition.startInventory.manualEdit)"
+                          @click="revertRowToAuto(nutrition.startInventory)"
+                          title="Revert to auto-fill">↺ auto</button>
+                </td>
+                <td class="col-action col-clear">
+                  <button type="button" class="clear-btn"
+                          @click="clearRowSupplies(nutrition.startInventory)"
+                          title="Clear gels, fluid &amp; water at this row">clear</button>
+                </td>
+                <td class="col-auto num"><input type="checkbox" x-model="nutrition.startInventory.autoRestock" @change="onAutoRestockToggle(nutrition.startInventory)" /></td>
+                <td class="col-num restock-need" x-text="Math.round(cpRestockNeed.__START__?.carbsG || 0) + ' g'"></td>
+                <td class="col-num restock-collected"
+                    :class="{ 'shortfall': (cpCarbsCollected.__START__ || 0) < (cpRestockNeed.__START__?.carbsG || 0) - 0.5 }"
+                    x-text="Math.round(cpCarbsCollected.__START__ || 0) + ' g'"></td>
+                <td class="col-num"
+                    :class="{ 'shortfall': (cpSurplus.__START__ || 0) < -0.5, 'surplus': (cpSurplus.__START__ || 0) > 0.5 }"
+                    x-text="((cpSurplus.__START__ || 0) >= 0 ? '+' : '') + Math.round(cpSurplus.__START__ || 0) + ' g'"></td>
+                <td class="col-num restock-need" x-text="(cpRestockNeed.__START__?.fluidL || 0).toFixed(1) + ' L'"></td>
+                <td class="col-num restock-collected"
+                    :class="{ 'shortfall': fluidCollectedFor(nutrition.startInventory) < (cpRestockNeed.__START__?.fluidL || 0) - 0.05 }"
+                    x-text="fluidCollectedFor(nutrition.startInventory).toFixed(1) + ' L'"></td>
+                <td class="col-num"
+                    :class="{ 'shortfall': fluidSurplusForKey('__START__') < -0.05, 'surplus': fluidSurplusForKey('__START__') > 0.05 }"
+                    x-text="(fluidSurplusForKey('__START__') >= 0 ? '+' : '') + fluidSurplusForKey('__START__').toFixed(1) + ' L'"></td>
+                <template x-for="t in nutrition.gelTypes" :key="t.id">
+                  <td class="col-num gel-col"><input type="number" min="0" step="1" class="num" :value="nutrition.startInventory.gels?.[t.id] ?? 0" @change="nutrition.startInventory.gels[t.id] = Number($event.target.value) || 0; onRowEdit(nutrition.startInventory, 'gel.' + t.id)" /></td>
+                </template>
+                <td class="col-add"></td>
+                <td class="col-num"><input type="number" min="0" step="0.1" class="num" :value="(nutrition.startInventory.fluidL || 0).toFixed(1)" @change="nutrition.startInventory.fluidL = Number($event.target.value) || 0; onRowEdit(nutrition.startInventory, 'fluidL')" /></td>
+                <td class="col-num"><input type="number" min="0" step="0.1" class="num" :value="(nutrition.startInventory.waterL || 0).toFixed(1)" @change="nutrition.startInventory.waterL = Number($event.target.value) || 0; onRowEdit(nutrition.startInventory, 'waterL')" /></td>
+                <td class="col-notes"><input type="text" x-model.lazy="nutrition.startInventory.notes" @change="onNutritionEdit()" placeholder="e.g. 2x 70g flasks" /></td>
+              </tr>
+              <template x-for="cp in sortedValidCheckpoints.filter(c => c.id !== 'FIN')" :key="cp._uid || cp.id">
+                <tr :class="{ 'in-chain': cpInChain.has(cp._uid) }">
+                  <td class="col-loc">
+                    <div class="loc-row">
+                      <span class="loc-name">
+                        <span class="cp-dot" :style="'background:' + (cp.color || 'var(--accent-2)')"></span>
+                        <strong class="cp-name" x-text="cp.id" :style="'color:' + (cp.color || 'var(--accent-2)')"></strong>
+                        <strong class="cp-name" x-text="' · ' + cp.name"></strong>
+                      </span>
+                    </div>
+                    <div class="loc-meta">
+                      <span x-text="'km ' + cp.km.toFixed(1)"></span>
+                      <span x-text="'· ' + (checkpointArrivals[sortedValidCheckpoints.indexOf(cp)] || '—')"></span>
+                      <span x-text="'· next refill in ' + formatLegHrs(cpTimeToNext[cp._uid] || 0)"></span>
+                    </div>
+                  </td>
+                  <td class="col-action col-adjust">
+                    <button type="button" class="adjust-btn"
+                            :class="{ active: !!cp.dropbag.autoAdjust }"
+                            @click="toggleAutoAdjust(cp.dropbag)"
+                            title="Auto-adjust: keep total carbs balanced when one input changes">↻ adjust</button>
+                  </td>
+                  <td class="col-action col-revert">
+                    <button type="button" class="revert-btn"
+                            :class="{ active: cp.dropbag.autoRestock && cp.dropbag.manualEdit }"
+                            :disabled="!(cp.dropbag.autoRestock && cp.dropbag.manualEdit)"
+                            @click="revertRowToAuto(cp.dropbag)"
+                            title="Revert to auto-fill">↺ auto</button>
+                  </td>
+                  <td class="col-action col-clear">
+                    <button type="button" class="clear-btn"
+                            @click="clearRowSupplies(cp.dropbag)"
+                            title="Clear gels, fluid &amp; water at this row">clear</button>
+                  </td>
+                  <td class="col-auto num"><input type="checkbox" x-model="cp.dropbag.autoRestock" @change="onAutoRestockToggle(cp.dropbag)" /></td>
+                  <td class="col-num restock-need" x-text="Math.round((cpRestockNeed[cp._uid]?.carbsG) || 0) + ' g'"></td>
+                  <td class="col-num restock-collected"
+                      :class="{ 'shortfall': (cpCarbsCollected[cp._uid] || 0) < ((cpRestockNeed[cp._uid]?.carbsG) || 0) - 0.5 }"
+                      x-text="Math.round(cpCarbsCollected[cp._uid] || 0) + ' g'"></td>
+                  <td class="col-num"
+                      :class="{ 'shortfall': (cpSurplus[cp._uid] || 0) < -0.5, 'surplus': (cpSurplus[cp._uid] || 0) > 0.5 }"
+                      x-text="cpInChain.has(cp._uid) ? (((cpSurplus[cp._uid] || 0) >= 0 ? '+' : '') + Math.round(cpSurplus[cp._uid] || 0) + ' g') : '—'"></td>
+                  <td class="col-num restock-need" x-text="((cpRestockNeed[cp._uid]?.fluidL) || 0).toFixed(1) + ' L'"></td>
+                  <td class="col-num restock-collected"
+                      :class="{ 'shortfall': fluidCollectedFor(cp.dropbag) < ((cpRestockNeed[cp._uid]?.fluidL) || 0) - 0.05 }"
+                      x-text="fluidCollectedFor(cp.dropbag).toFixed(1) + ' L'"></td>
+                  <td class="col-num"
+                      :class="{ 'shortfall': fluidSurplusForKey(cp._uid) < -0.05, 'surplus': fluidSurplusForKey(cp._uid) > 0.05 }"
+                      x-text="cpInChain.has(cp._uid) ? ((fluidSurplusForKey(cp._uid) >= 0 ? '+' : '') + fluidSurplusForKey(cp._uid).toFixed(1) + ' L') : '—'"></td>
+                  <template x-for="t in nutrition.gelTypes" :key="t.id">
+                    <td class="col-num gel-col"><input type="number" min="0" step="1" class="num" :value="cp.dropbag.gels?.[t.id] ?? 0" @change="cp.dropbag.gels[t.id] = Number($event.target.value) || 0; onRowEdit(cp.dropbag, 'gel.' + t.id)" /></td>
+                  </template>
+                  <td class="col-add"></td>
+                  <td class="col-num"><input type="number" min="0" step="0.1" class="num" :value="(cp.dropbag.fluidL || 0).toFixed(1)" @change="cp.dropbag.fluidL = Number($event.target.value) || 0; onRowEdit(cp.dropbag, 'fluidL')" /></td>
+                  <td class="col-num"><input type="number" min="0" step="0.1" class="num" :value="(cp.dropbag.waterL || 0).toFixed(1)" @change="cp.dropbag.waterL = Number($event.target.value) || 0; onRowEdit(cp.dropbag, 'waterL')" /></td>
+                  <td class="col-notes"><input type="text" x-model.lazy="cp.dropbag.notes" @change="onDropbagEdit()" placeholder="auto-fill or your own note" /></td>
+                </tr>
+              </template>
+            </tbody>
+            <tfoot>
+              <tr class="dropbag-totals">
+                <td class="col-loc"><strong>Total</strong></td>
+                <td class="col-action col-adjust"></td>
+                <td class="col-action col-revert"></td>
+                <td class="col-action col-clear"></td>
+                <td class="col-auto"></td>
+                <td class="col-num">—</td>
+                <td class="col-num" x-text="(Math.round((nutritionTotals.plannedGelCarbsG || 0) + (nutritionTotals.plannedFluidG || 0))) + ' g'"></td>
+                <td class="col-num"
+                    :class="{ 'shortfall': nutritionTotals.totalSurplus < -0.5, 'surplus': nutritionTotals.totalSurplus > 0.5 }"
+                    x-text="(nutritionTotals.totalSurplus >= 0 ? '+' : '') + Math.round(nutritionTotals.totalSurplus || 0) + ' g'"></td>
+                <td class="col-num">—</td>
+                <td class="col-num" x-text="((nutritionTotals.plannedFluidL || 0) + (nutritionTotals.plannedWaterL || 0)).toFixed(1) + ' L'"></td>
+                <td class="col-num"
+                    :class="{ 'shortfall': totalFluidSurplus < -0.05, 'surplus': totalFluidSurplus > 0.05 }"
+                    x-text="(totalFluidSurplus >= 0 ? '+' : '') + totalFluidSurplus.toFixed(1) + ' L'"></td>
+                <template x-for="t in nutrition.gelTypes" :key="t.id">
+                  <td class="col-num gel-col" x-text="nutritionTotals.plannedGels?.[t.id] || 0"></td>
+                </template>
+                <td class="col-add"></td>
+                <td class="col-num" x-text="(nutritionTotals.plannedFluidL || 0).toFixed(1) + ' L'"></td>
+                <td class="col-num" x-text="(nutritionTotals.plannedWaterL || 0).toFixed(1) + ' L'"></td>
+                <td class="col-notes"></td>
+              </tr>
+              <tr class="dropbag-need">
+                <td class="col-loc"><strong>Need</strong></td>
+                <td class="col-action col-adjust"></td>
+                <td class="col-action col-revert"></td>
+                <td class="col-action col-clear"></td>
+                <td class="col-auto"></td>
+                <td class="col-num" x-text="Math.round(nutritionTotals.totalCarbsG || 0) + ' g'"></td>
+                <td class="col-num">—</td>
+                <td class="col-num">—</td>
+                <td class="col-num" x-text="totalFluidNeeded.toFixed(1) + ' L'"></td>
+                <td class="col-num">—</td>
+                <td class="col-num">—</td>
+                <template x-for="(t, ti) in nutrition.gelTypes" :key="t.id">
+                  <td class="col-num gel-col" x-text="ti === 0 ? nutritionTotals.totalGelsNeeded : '—'"></td>
+                </template>
+                <td class="col-add"></td>
+                <td class="col-num" x-text="(((nutritionTotals.totalFluidG || 0) / nutritionTotals.primaryFluidGPerL)).toFixed(1) + ' L'"></td>
+                <td class="col-num">—</td>
+                <td class="col-notes">
+                  <span class="warn" x-show="nutritionTotals.gelShortfall > 0" x-text="'⚠ short ' + nutritionTotals.gelShortfall + ' gels'"></span>
+                  <span class="warn" x-show="nutritionTotals.gelShortfall === 0 && nutritionTotals.fluidShortfallG > 0" x-text="'⚠ short ' + Math.round(nutritionTotals.fluidShortfallG) + ' g fluid'"></span>
+                  <span class="ok" x-show="nutritionTotals.gelShortfall === 0 && nutritionTotals.fluidShortfallG === 0">✓ covered</span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-map" class="panel" :class="{ collapsed: isCollapsed('map'), 'drop-target': _dragOverPanelKey === 'map' }" :style="'order:' + panelOrderIdx('map')" @dragover="onPanelDragOver('map', $event)" @dragleave="onPanelDragLeave('map')" @drop="onPanelDrop('map', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('map')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('map', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>Map</span>
+        <span class="header-extra cp-label-toggles">
+          <span class="toggle-group-label">CP labels:</span>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="cpLabelFields.code" @change="updateCpLabels()" /> code
+          </label>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="cpLabelFields.name" @change="updateCpLabels()" /> name
+          </label>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="cpLabelFields.distance" @change="updateCpLabels()" /> km
+          </label>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="cpLabelFields.eta" @change="updateCpLabels()" /> ETA
+          </label>
+          <button class="chevron" @click.stop="toggleCollapse('map')" x-text="isCollapsed('map') ? '▶' : '▼'"></button>
+        </span>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('map')">
+        <!-- V4 v4.5: Map height is user-resizable via the drag handle
+             below. Saved height re-applied on reload. -->
+        <div id="map" :style="mapHeightStyle"></div>
+        <div class="map-resize-handle"
+             @mousedown="onMapResizeStart($event)"
+             @touchstart="onMapResizeStart($event)"
+             title="Drag to resize map">
+          <span>⇕ drag to resize</span>
+        </div>
+        <p class="hint">3D-tilted basemap (Google-Maps-style) would require switching to MapLibre GL — see Updates #69. Use the <strong>3D route profile</strong> below for orbit inspection.</p>
+      </div>
+    </section>
+
+    <section id="panel-cumpace" class="panel" :class="{ collapsed: isCollapsed('cumpace'), 'drop-target': _dragOverPanelKey === 'cumpace' }" :style="'order:' + panelOrderIdx('cumpace')" @dragover="onPanelDragOver('cumpace', $event)" @dragleave="onPanelDragLeave('cumpace')" @drop="onPanelDrop('cumpace', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('cumpace')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('cumpace', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>Cumulative pace</span>
+        <span class="header-extra">
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="showCumLabels" @change="updateCumLabels()" /> 5-km cumulative labels
+          </label>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="showCumGAP" @change="updateCumGAP()" /> show GAP overlay
+          </label>
+          <label class="inline-toggle prior-toggle" :class="{ disabled: !priorRun }" @click.stop>
+            <input type="checkbox" x-model="showPriorOverlay.cumpace" :disabled="!priorRun" @change="onPriorOverlayToggle('cumpace')" />
+            <span>prior overlay</span>
+            <em x-show="priorRun" x-text="priorRun?.name ? '· ' + priorRun.name : ''"></em>
+          </label>
+          <label class="inline-toggle prior-hr-toggle" :class="{ disabled: !priorRun }" @click.stop>
+            <input type="checkbox" x-model="showPriorOverlay.cumpaceHR" :disabled="!priorRun" @change="onPriorOverlayToggle('cumpaceHR')" />
+            <span>prior HR</span>
+          </label>
+          <button class="chevron" @click.stop="toggleCollapse('cumpace')" x-text="isCollapsed('cumpace') ? '▶' : '▼'"></button>
+        </span>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('cumpace')">
+        <table class="chart-hover-table" :class="{ inactive: hoverKm == null }">
+          <thead>
+            <tr>
+              <th></th>
+              <th>km</th>
+              <th>Pace</th>
+              <th>GAP</th>
+              <th>Cum-avg</th>
+              <th>Grade</th>
+              <th x-show="priorRun">HR</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="row-goal">
+              <th>Goal</th>
+              <td x-text="hoverKm != null ? hoverKm.toFixed(2) : '—'"></td>
+              <td x-text="hoverKm != null ? formatPace(paceAtKm(hoverKm)) : '—'"></td>
+              <td x-text="hoverKm != null ? formatPace(gapAtKm(hoverKm)) : '—'"></td>
+              <td x-text="hoverKm != null && hoverKm > 0 ? formatPace(secondsAtKmHelper(hoverKm) / hoverKm) : '—'"></td>
+              <td x-text="hoverKm != null ? formatGrade(gradeAtKmHelper(hoverKm)) : '—'"></td>
+              <td x-show="priorRun">—</td>
+            </tr>
+            <tr class="row-prior" x-show="priorRun">
+              <th>Prior</th>
+              <td x-text="hoverKm != null ? hoverKm.toFixed(2) : '—'"></td>
+              <td x-text="hoverKm != null ? formatPace(priorPaceAtKm(hoverKm)) : '—'"></td>
+              <td x-text="hoverKm != null ? formatPace(priorGapAtKm(hoverKm)) : '—'"></td>
+              <td x-text="hoverKm != null ? formatPace(priorCumAvgAtKm(hoverKm)) : '—'"></td>
+              <td x-text="hoverKm != null ? formatGrade(priorGradeAtKm(hoverKm)) : '—'"></td>
+              <td x-text="hoverKm != null && priorHRAtKm(hoverKm) != null ? Math.round(priorHRAtKm(hoverKm)) + ' bpm' : '—'"></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="chart-wrap tall"><canvas id="cumpace-chart"></canvas></div>
+      </div>
+    </section>
+
+    <section id="panel-segpace" class="panel" :class="{ collapsed: isCollapsed('segpace'), 'drop-target': _dragOverPanelKey === 'segpace' }" :style="'order:' + panelOrderIdx('segpace')" @dragover="onPanelDragOver('segpace', $event)" @dragleave="onPanelDragLeave('segpace')" @drop="onPanelDrop('segpace', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('segpace')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('segpace', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>Per-segment pace</span>
+        <span class="header-stats" x-show="gpx && !isCollapsed('segpace')">
+          <span>Moving <strong x-text="formatTime(totalSec)"></strong></span>
+          <span>Elapsed <strong x-text="formatTime(totalSec + totalStoppage)"></strong></span>
+          <span>Pace <strong x-text="formatPace(goal.paceSecPerKm) + '/km'"></strong></span>
+          <span>GAP <strong x-text="formatPace(goal.gapSecPerKm) + '/km'"></strong></span>
+        </span>
+        <span class="header-extra">
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="showSegLabels" @change="updateSegLabels()" /> per-segment labels
+          </label>
+          <label class="inline-toggle prior-toggle" :class="{ disabled: !priorRun }" @click.stop>
+            <input type="checkbox" x-model="showPriorOverlay.segpace" :disabled="!priorRun" @change="onPriorOverlayToggle('segpace')" />
+            <span>prior overlay</span>
+            <em x-show="priorRun" x-text="priorRun?.name ? '· ' + priorRun.name : ''"></em>
+          </label>
+          <label class="inline-toggle prior-hr-toggle" :class="{ disabled: !priorRun }" @click.stop>
+            <input type="checkbox" x-model="showPriorOverlay.segpaceHR" :disabled="!priorRun" @change="onPriorOverlayToggle('segpaceHR')" />
+            <span>prior HR</span>
+          </label>
+          <button class="chevron" @click.stop="toggleCollapse('segpace')" x-text="isCollapsed('segpace') ? '▶' : '▼'"></button>
+        </span>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('segpace')">
+        <p class="hint">Drag any segment up to make that pace faster, down to slow it. Hold <kbd>Shift</kbd> to drop the override afterwards by deleting the row in the per-segment grid.</p>
+        <table class="chart-hover-table" :class="{ inactive: hoverKm == null }">
+          <thead>
+            <tr>
+              <th></th>
+              <th>km</th>
+              <th>Pace</th>
+              <th>GAP</th>
+              <th>Grade</th>
+              <th x-show="priorRun">HR</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="row-goal">
+              <th>Goal</th>
+              <td x-text="hoverKm != null ? hoverKm.toFixed(2) : '—'"></td>
+              <td x-text="hoverKm != null ? formatPace(paceAtKm(hoverKm)) : '—'"></td>
+              <td x-text="hoverKm != null ? formatPace(gapAtKm(hoverKm)) : '—'"></td>
+              <td x-text="hoverKm != null ? formatGrade(gradeAtKmHelper(hoverKm)) : '—'"></td>
+              <td x-show="priorRun">—</td>
+            </tr>
+            <tr class="row-prior" x-show="priorRun">
+              <th>Prior</th>
+              <td x-text="hoverKm != null ? hoverKm.toFixed(2) : '—'"></td>
+              <td x-text="hoverKm != null ? formatPace(priorPaceAtKm(hoverKm)) : '—'"></td>
+              <td x-text="hoverKm != null ? formatPace(priorGapAtKm(hoverKm)) : '—'"></td>
+              <td x-text="hoverKm != null ? formatGrade(priorGradeAtKm(hoverKm)) : '—'"></td>
+              <td x-text="hoverKm != null && priorHRAtKm(hoverKm) != null ? Math.round(priorHRAtKm(hoverKm)) + ' bpm' : '—'"></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="chart-wrap tall"><canvas id="segpace-chart"></canvas></div>
+      </div>
+    </section>
+
+    <section id="panel-eta" class="panel" :class="{ collapsed: isCollapsed('eta'), 'drop-target': _dragOverPanelKey === 'eta' }" :style="'order:' + panelOrderIdx('eta')" @dragover="onPanelDragOver('eta', $event)" @dragleave="onPanelDragLeave('eta')" @drop="onPanelDrop('eta', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('eta')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('eta', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>ETA over time</span>
+        <button class="chevron" x-text="isCollapsed('eta') ? '▶' : '▼'"></button>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('eta')">
+        <div class="chart-hover-pill" :class="{ inactive: hoverKm == null }" x-text="hoverKm != null ? etaHoverPill(hoverKm) : 'hover the route to see time of day at any km'"></div>
+        <div class="chart-wrap eta"><canvas id="eta-chart"></canvas></div>
+      </div>
+    </section>
+
+    <section id="panel-elev" class="panel" :class="{ collapsed: isCollapsed('elev'), 'drop-target': _dragOverPanelKey === 'elev' }" :style="'order:' + panelOrderIdx('elev')" @dragover="onPanelDragOver('elev', $event)" @dragleave="onPanelDragLeave('elev')" @drop="onPanelDrop('elev', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('elev')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('elev', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>Elevation profile</span>
+        <span class="header-extra">
+          <label class="inline-toggle prior-toggle" :class="{ disabled: !priorRun }" @click.stop>
+            <input type="checkbox" x-model="showPriorOverlay.elev" :disabled="!priorRun" @change="onPriorOverlayToggle('elev')" />
+            <span>prior overlay</span>
+            <em x-show="priorRun" x-text="priorRun?.name ? '· ' + priorRun.name : ''"></em>
+          </label>
+          <button class="chevron" @click.stop="toggleCollapse('elev')" x-text="isCollapsed('elev') ? '▶' : '▼'"></button>
+        </span>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('elev')">
+        <div class="chart-hover-pill" :class="{ inactive: hoverKm == null }" x-text="hoverKm != null ? elevationHoverPill(hoverKm) : 'hover the route to see elevation · pace · GAP at any km'"></div>
+        <div class="chart-wrap"><canvas id="elevation-chart"></canvas></div>
+        <div class="legend">
+          <span><i class="sw flat"></i>&lt;3%</span>
+          <span><i class="sw mod"></i>3–7%</span>
+          <span><i class="sw steep"></i>7–12%</span>
+          <span><i class="sw severe"></i>&gt;12%</span>
+          <span><i class="sw down"></i>downhill</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-p3d" class="panel" :class="{ collapsed: isCollapsed('p3d'), 'drop-target': _dragOverPanelKey === 'p3d' }" :style="'order:' + panelOrderIdx('p3d')" @dragover="onPanelDragOver('p3d', $event)" @dragleave="onPanelDragLeave('p3d')" @drop="onPanelDrop('p3d', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('p3d')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('p3d', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>3D route profile</span>
+        <span class="header-extra cp-label-toggles">
+          <span class="toggle-group-label">CP labels:</span>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="cpLabelFields.code" @change="updateCpLabels()" /> code
+          </label>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="cpLabelFields.name" @change="updateCpLabels()" /> name
+          </label>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="cpLabelFields.distance" @change="updateCpLabels()" /> km
+          </label>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="cpLabelFields.eta" @change="updateCpLabels()" /> ETA
+          </label>
+          <button class="chevron" @click.stop="toggleCollapse('p3d')" x-text="isCollapsed('p3d') ? '▶' : '▼'"></button>
+        </span>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('p3d')">
+        <div class="p3d-controls">
+          <label class="slider">
+            <span>Colour sensitivity <em x-text="p3dSensitivityM + ' m window'"></em></span>
+            <input type="range" min="250" max="1000" step="25" x-model.number="p3dSensitivityM"
+                   @input="onP3dSensitivity()" @change="onP3dSensitivity()" />
+            <small>Smaller = more responsive to short rollers · Larger = smoother colour bands</small>
+          </label>
+          <div class="p3d-legend">
+            <span class="legend-pill" style="background:#3d8bb5">&lt; -7%</span>
+            <span class="legend-pill" style="background:#5fa8d3">-7 to -3%</span>
+            <span class="legend-pill" style="background:#6bcf7f">-3 to +3%</span>
+            <span class="legend-pill" style="background:#ffd166">+3 to +7%</span>
+            <span class="legend-pill" style="background:#f0a868">+7 to +12%</span>
+            <span class="legend-pill" style="background:#e95569">&gt; +12%</span>
+          </div>
+        </div>
+        <div id="profile3d"></div>
+      </div>
+    </section>
+
+    <section id="panel-gradient" class="panel" :class="{ collapsed: isCollapsed('gradient'), 'drop-target': _dragOverPanelKey === 'gradient' }" :style="'order:' + panelOrderIdx('gradient')" @dragover="onPanelDragOver('gradient', $event)" @dragleave="onPanelDragLeave('gradient')" @drop="onPanelDrop('gradient', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('gradient')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('gradient', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>Pace by gradient</span>
+        <button class="chevron" x-text="isCollapsed('gradient') ? '▶' : '▼'"></button>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('gradient')">
+        <p class="hint">Each row's override applies to segments whose grade lands in <strong>±0.5%</strong> of the row (e.g. <em>+3%</em> covers 2.5% to 3.5%). The default pace = goal GAP run at this gradient. Implied GAP back-solves the override pace.</p>
+        <table class="gradient-table">
+          <thead>
+            <tr class="gradient-group-header">
+              <th></th>
+              <th></th>
+              <th colspan="2">Goal GAP <span x-text="goalGapText"></span></th>
+              <th colspan="2">Technical GAP <span x-text="'×' + technicalSlowdown.toFixed(2)"></span></th>
+              <th></th>
+              <template x-if="priorRun">
+                <th colspan="8" class="prior-stats-group">Prior race · <span x-text="priorRun?.name || ''"></span></th>
+              </template>
+            </tr>
+            <tr>
+              <th>Grade</th>
+              <th>GAP-derived pace</th>
+              <th>Override pace</th>
+              <th>Implied GAP</th>
+              <th>Override (technical)</th>
+              <th>Implied GAP (tech)</th>
+              <th></th>
+              <template x-if="priorRun">
+                <th class="prior-stats-cell" title="25th percentile pace">Low pace</th>
+              </template>
+              <template x-if="priorRun"><th class="prior-stats-cell">Low GAP</th></template>
+              <template x-if="priorRun"><th class="prior-stats-cell">Avg pace</th></template>
+              <template x-if="priorRun"><th class="prior-stats-cell">Avg GAP</th></template>
+              <template x-if="priorRun"><th class="prior-stats-cell">Median pace</th></template>
+              <template x-if="priorRun"><th class="prior-stats-cell">Median GAP</th></template>
+              <template x-if="priorRun" ><th class="prior-stats-cell" title="75th percentile pace">Top pace</th></template>
+              <template x-if="priorRun"><th class="prior-stats-cell">Top GAP</th></template>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="g in gradientRange" :key="g">
+              <tr>
+                <td class="num grade" :class="gradeClass(g)" x-text="(g >= 0 ? '+' : '') + g + '%'"></td>
+                <td class="num" x-text="formatPace(defaultPaceFor(g))"></td>
+                <td>
+                  <input type="text" class="editable num"
+                         :class="{ edited: gradientPaceOverrides[g] != null }"
+                         :value="formatPace(gradientPaceOverrides[g] ?? defaultPaceFor(g))"
+                         @change="onGradientPaceEdit(g, $event)" />
+                </td>
+                <td class="num" x-text="gradientPaceOverrides[g] != null ? formatPace(gradientOverrideGAP(g)) : '—'"></td>
+                <td>
+                  <input type="text" class="editable num"
+                         :class="{ edited: technicalGradientPaceOverrides[g] != null }"
+                         :value="formatPace(technicalGradientPaceOverrides[g] ?? defaultPaceFor(g) * technicalSlowdown)"
+                         @change="onTechnicalGradientPaceEdit(g, $event)"
+                         :title="'Applied when a segment at this grade is flagged technical'" />
+                </td>
+                <td class="num" x-text="technicalGradientPaceOverrides[g] != null ? formatPace(technicalGradientOverrideGAP(g)) : '—'"></td>
+                <td>
+                  <button class="btn-x clear-btn" x-show="gradientPaceOverrides[g] != null || technicalGradientPaceOverrides[g] != null"
+                          @click="clearGradientOverride(g); clearTechnicalGradientOverride(g)" title="Clear both">↺</button>
+                </td>
+                <template x-if="priorRun"><td class="num prior-stats-cell" x-text="formatPace(priorGradStat(g, 'q1', 'pace'))"></td></template>
+                <template x-if="priorRun"><td class="num prior-stats-cell" x-text="formatPace(priorGradStat(g, 'q1', 'gap'))"></td></template>
+                <template x-if="priorRun"><td class="num prior-stats-cell" x-text="formatPace(priorGradStat(g, 'avg', 'pace'))"></td></template>
+                <template x-if="priorRun"><td class="num prior-stats-cell" x-text="formatPace(priorGradStat(g, 'avg', 'gap'))"></td></template>
+                <template x-if="priorRun"><td class="num prior-stats-cell" x-text="formatPace(priorGradStat(g, 'med', 'pace'))"></td></template>
+                <template x-if="priorRun"><td class="num prior-stats-cell" x-text="formatPace(priorGradStat(g, 'med', 'gap'))"></td></template>
+                <template x-if="priorRun"><td class="num prior-stats-cell" x-text="formatPace(priorGradStat(g, 'q3', 'pace'))"></td></template>
+                <template x-if="priorRun"><td class="num prior-stats-cell" x-text="formatPace(priorGradStat(g, 'q3', 'gap'))"></td></template>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <button class="btn small" @click="clearAllGradientOverrides()"
+                x-show="Object.keys(gradientPaceOverrides).length + Object.keys(technicalGradientPaceOverrides).length > 0">
+          Clear all gradient overrides
+        </button>
+      </div>
+    </section>
+
+    <section id="panel-cp" class="panel" :class="{ collapsed: isCollapsed('cp'), 'drop-target': _dragOverPanelKey === 'cp' }" :style="'order:' + panelOrderIdx('cp')" @dragover="onPanelDragOver('cp', $event)" @dragleave="onPanelDragLeave('cp')" @drop="onPanelDrop('cp', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('cp')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('cp', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>Checkpoints</span>
+        <button class="chevron" x-text="isCollapsed('cp') ? '▶' : '▼'"></button>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('cp')">
+        <table class="cp-table">
+          <thead>
+            <tr><th>Code</th><th>Name</th><th class="num">km</th><th class="num">From prev</th><th class="num">Stop</th><th class="num prior-stop-col" x-show="priorRun" title="Stopped time at this CP in the prior race (speed &lt; 0.5 m/s within ±300m)">Prior stop</th><th class="num">Arrive</th><th class="num">Depart</th><th>Notes</th><th></th></tr>
+          </thead>
+          <template x-for="(cp, i) in sortedCheckpoints" :key="cp._uid || cp.id">
+            <tbody :class="{ 'cp-blank': cp.km == null }">
+              <tr>
+                <td>
+                  <span class="cp-id-cell">
+                    <span class="color-picker-dropdown" x-data="{ open: false }" @click.outside="open = false">
+                      <button type="button" class="color-swatch-trigger"
+                              :style="'background:' + (cp.color || '#58a6ff')"
+                              @click="open = !open"
+                              title="Pick CP colour"></button>
+                      <div class="color-picker-menu" x-show="open" x-transition.opacity>
+                        <input type="color" class="color-picker-native"
+                               :value="cp.color || '#58a6ff'"
+                               @change="onCheckpointColorEdit(cp, $event); open = false" />
+                        <div class="color-picker-presets" x-show="usedCpColors.length">
+                          <span class="color-picker-label">Match an existing CP</span>
+                          <span class="color-swatch-row">
+                            <template x-for="c in usedCpColors" :key="c">
+                              <button type="button" class="color-swatch-pip"
+                                      :class="{ active: (cp.color || '').toLowerCase() === c.toLowerCase() }"
+                                      :style="'background:' + c"
+                                      @click="setCpColor(cp, c); open = false"
+                                      :title="'Match ' + c"></button>
+                            </template>
+                          </span>
+                        </div>
+                      </div>
+                    </span>
+                    <input type="text" class="cp-id" x-model.lazy="cp.id" @change="onCheckpointIdEdit(cp)" />
+                  </span>
+                </td>
+                <td><input type="text" x-model.lazy="cp.name" @change="snapshotThen(() => recompute())" placeholder="(name)" /></td>
+                <td><input type="number" step="0.1" min="0" :max="gpx.totalDistanceKm" x-model.number.lazy="cp.km" @change="onCheckpointKmEdit(cp)" placeholder="km" /></td>
+                <td class="num" x-text="(cp.km == null || !isFinite(cp.km)) ? '—' : (i === 0 ? cp.km.toFixed(1) : (sortedCheckpoints[i-1].km != null ? (cp.km - sortedCheckpoints[i-1].km).toFixed(1) : cp.km.toFixed(1)))"></td>
+                <td><input type="text" class="num" :value="formatStop(cp.stoppageSec)" @change="onStoppageEdit(cp, $event)" placeholder="0:00" /></td>
+                <td class="num prior-stop-col" x-show="priorRun" x-text="cp.km != null && priorRun ? (priorStopAtKm(cp.km) >= 5 ? formatStop(priorStopAtKm(cp.km)) : '—') : '—'"></td>
+                <td><input type="text" class="num" :value="checkpointArrivals[i] || ''" @change="onCpArriveEdit(cp, $event)" /></td>
+                <td><input type="text" class="num" :value="checkpointDepartures[i] || ''" @change="onCpDepartEdit(cp, $event)" /></td>
+                <td><input type="text" x-model.lazy="cp.notes" @change="snapshotThen(() => recompute())" /></td>
+                <td><button class="btn-x" @click="removeCheckpoint(cp)" title="Remove">×</button></td>
+              </tr>
+              <template x-if="i < sortedCheckpoints.length - 1 && cp.km != null && sortedCheckpoints[i+1].km != null">
+                <tr class="cp-insert-row">
+                  <td colspan="9">
+                    <button class="btn-insert" @click="insertCheckpointBetween(i)"
+                            :title="'Insert blank checkpoint (will sort by km once you fill it in)'">+</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </template>
+        </table>
+        <button class="btn small" @click="addCheckpoint()">+ Add checkpoint</button>
+      </div>
+    </section>
+
+    <!-- V4 Phase 2: Spectator points table. Lat/lon-driven points (not
+         linked to checkpoints) that show up on the crew share view's
+         map + ETA list. Useful for "where to stand for the best view"
+         without conflating with aid-station / drop-bag CPs. -->
+    <section id="panel-spectator" class="panel" :class="{ collapsed: isCollapsed('spectator'), 'drop-target': _dragOverPanelKey === 'spectator' }" :style="'order:' + panelOrderIdx('spectator')" @dragover="onPanelDragOver('spectator', $event)" @dragleave="onPanelDragLeave('spectator')" @drop="onPanelDrop('spectator', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('spectator')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('spectator', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>Spectator points <small style="font-weight:400;color:var(--fg-dim);font-size:11px;">· crew viewpoints</small></span>
+        <button class="chevron" x-text="isCollapsed('spectator') ? '▶' : '▼'"></button>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('spectator')">
+        <p class="spectator-blurb">
+          Enter <strong>either</strong> lat,lon (Google Maps long-press → copy coords) <strong>or</strong> a km along the course — the planner snaps to the route either way and shows the point on the crew share view's map + ETAs.
+        </p>
+        <table class="spectator-table">
+          <thead>
+            <tr>
+              <th style="width:24%;">Name</th>
+              <th style="width:16%;">Lat</th>
+              <th style="width:16%;">Lon</th>
+              <th class="num" style="width:10%;" title="Editable — type a km to snap lat/lon to the route">km</th>
+              <th class="num" style="width:10%;">ETA</th>
+              <th>Notes</th>
+              <th style="width:32px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="sp in spectatorPoints" :key="sp.id">
+              <tr>
+                <td><input type="text" x-model="sp.name" @change="onSpectatorEdit()" /></td>
+                <td><input type="number" step="0.000001" x-model.number="sp.lat" @change="onSpectatorLatLonChange(sp)" placeholder="-33.81" /></td>
+                <td><input type="number" step="0.000001" x-model.number="sp.lon" @change="onSpectatorLatLonChange(sp)" placeholder="150.26" /></td>
+                <td class="num"><input type="number" step="0.1" min="0" x-model.number="sp.km" @change="onSpectatorKmChange(sp)" placeholder="0" title="Type a km to snap lat/lon to the route" /></td>
+                <td class="num" x-text="(() => {
+                  if (sp.km == null || !segments.length) return '—';
+                  const movingSec = (function(){
+                    if (!segments.length) return 0;
+                    if (sp.km <= segments[0].startKm) return 0;
+                    const last = segments[segments.length-1];
+                    if (sp.km >= last.endKm) return segCumSec[segCumSec.length-1];
+                    for (let i = 0; i < segments.length; i++) {
+                      const s = segments[i];
+                      if (sp.km < s.endKm) {
+                        const prev = i === 0 ? 0 : segCumSec[i-1];
+                        const segEl = segCumSec[i] - prev;
+                        const t = s.distKm > 0 ? (sp.km - s.startKm) / s.distKm : 0;
+                        return prev + segEl * t;
+                      }
+                    }
+                    return segCumSec[segCumSec.length-1] || 0;
+                  })();
+                  const sortedCps = [...checkpoints].filter(c => c.km != null).sort((a,b)=>a.km-b.km);
+                  let stop = 0; for (const c of sortedCps) { if (c.km < sp.km) stop += c.stoppageSec || 0; }
+                  const sec = movingSec + stop;
+                  const total = (function(){
+                    const r = (raceStart||'06:00:00').split(':').map(n=>parseInt(n,10)||0);
+                    return r[0]*3600 + (r[1]||0)*60 + (r[2]||0);
+                  })() + sec;
+                  const day=86400; const t=((Math.round(total)%day)+day)%day;
+                  const h=Math.floor(t/3600), m=Math.floor((t%3600)/60);
+                  return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+                })()"></td>
+                <td><input type="text" x-model="sp.notes" @change="onSpectatorEdit()" placeholder="parking / access" /></td>
+                <td><button class="btn-x" @click="removeSpectatorPoint(sp.id)" title="Remove">×</button></td>
+              </tr>
+            </template>
+            <template x-if="spectatorPoints.length === 0">
+              <tr><td colspan="7" class="spectator-empty">No spectator points yet — click + Add below.</td></tr>
+            </template>
+          </tbody>
+        </table>
+        <button class="btn small" @click="addSpectatorPoint()" :disabled="!gpx">+ Add spectator point</button>
+      </div>
+    </section>
+
+    <!-- V4 Phase 1: Spectator / Crew Share View. Read-only link Jeff sends
+         to crew + family. Phase 1 = static (no live GPS, no spectator
+         points). Phase 3 will add "Go live". -->
+    <section id="panel-share" class="panel" :class="{ collapsed: isCollapsed('share'), 'drop-target': _dragOverPanelKey === 'share' }" :style="'order:' + panelOrderIdx('share')" @dragover="onPanelDragOver('share', $event)" @dragleave="onPanelDragLeave('share')" @drop="onPanelDrop('share', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('share')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('share', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>Share &amp; go live <small style="font-weight:400;color:var(--fg-dim);font-size:11px;">· crew view</small></span>
+        <button class="chevron" x-text="isCollapsed('share') ? '▶' : '▼'"></button>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('share')">
+        <div class="share-panel-inner">
+          <p class="share-blurb">
+            One link for crew &amp; family with the map, drop-bag handover, and ETAs.
+            Re-generate any time to push your latest plan — the URL stays the same.
+          </p>
+          <div class="share-actions">
+            <button class="btn primary" @click="generateShareLink()" :disabled="!gpxText || share.generating"
+                    x-text="share.runId ? (share.generating ? 'Updating…' : 'Update share link') : (share.generating ? 'Generating…' : 'Generate share link')"></button>
+            <span class="share-status" x-show="share.runId && !share.generating" x-text="'Updated ' + shareUpdatedAgo"></span>
+            <span class="share-error" x-show="share.error" x-text="'⚠ ' + share.error"></span>
+          </div>
+
+          <div class="share-url-row" x-show="share.runId">
+            <input id="share-url-input" type="text" readonly :value="shareUrl" @click="$event.target.select()" />
+            <button class="btn small" @click="copyShareUrl()" x-text="share.copied ? 'Copied ✓' : 'Copy'"></button>
+            <button class="btn small" @click="openSharePreview()">Open share view ↗</button>
+          </div>
+
+          <div class="share-export-row">
+            <button class="btn small" @click="exportShareHTML()" :disabled="!gpxText || share.generating"
+                    title="Download a single .html file with the plan baked in. Crew can open it on PC or phone without the planner server.">
+              ⬇ Export as standalone HTML
+            </button>
+            <small class="share-status">
+              Self-contained file · works offline once loaded (Leaflet tiles via internet).
+            </small>
+          </div>
+
+          <div class="share-meta-row" x-show="share.runId">
+            <label class="share-meta-label">
+              <span>Expires</span>
+              <input type="date" :value="shareExpiryDateInput" @change="setShareExpiry($event.target.value)" />
+            </label>
+            <span class="share-meta-mini">
+              Run <code x-text="shareRunIdShort"></code>
+            </span>
+          </div>
+
+          <details class="share-details" x-show="share.runId">
+            <summary>What does crew see?</summary>
+            <ul>
+              <li><strong>Map</strong> with route + checkpoints. Tap a CP → Google or Apple Maps directions.</li>
+              <li><strong>Drop-bag handover</strong>: per-CP fluid + gel counts to hand you.</li>
+              <li><strong>ETAs</strong> for each CP + finish, with "vs last year" deltas if a prior race is loaded.</li>
+              <li>No editable inputs. Tasks list, history, internal knobs are <strong>not</strong> shared.</li>
+            </ul>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-grid" class="panel grid-panel" :class="{ collapsed: isCollapsed('grid'), 'drop-target': _dragOverPanelKey === 'grid' }" :style="'order:' + panelOrderIdx('grid')" @dragover="onPanelDragOver('grid', $event)" @dragleave="onPanelDragLeave('grid')" @drop="onPanelDrop('grid', $event)">
+      <h2 class="panel-header" @click="toggleCollapse('grid')">
+        <span class="panel-drag" draggable="true" @dragstart.stop="onPanelDragStart('grid', $event)" @dragend="onPanelDragEnd()" @click.stop title="Drag to reorder section">⋮⋮</span>
+        <span>Per-segment plan</span>
+        <span class="header-extra">
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="showMovingPace" /> moving pace
+          </label>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="showElapsedPace" /> elapsed pace
+          </label>
+          <label class="inline-toggle" @click.stop title="Per-km pace including stoppage time at each CP. Single column; no GAP companion.">
+            <input type="checkbox" x-model="showPaceStop" /> pace incl. stop
+          </label>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="showCarbs" /> carbs g
+          </label>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="showGelsCol" /> # gels
+          </label>
+          <label class="inline-toggle" @click.stop>
+            <input type="checkbox" x-model="showFluidLCol" /> fluid L
+          </label>
+          <label class="inline-toggle prior-toggle" :class="{ disabled: !priorRun }" @click.stop>
+            <input type="checkbox" x-model="showPriorOverlay.grid" :disabled="!priorRun" />
+            <span>prior pace</span>
+          </label>
+          <label class="inline-toggle prior-hr-toggle" :class="{ disabled: !priorRun }" @click.stop>
+            <input type="checkbox" x-model="showPriorOverlay.gridHR" :disabled="!priorRun" />
+            <span>prior HR</span>
+          </label>
+          <span class="match-prior-batch" x-show="priorRun" @click.stop>
+            <button type="button" class="btn small" @click="matchAllPrior()" :disabled="!priorRun" title="Set every segment's pace override to match the prior run">≈ Match all</button>
+            <button type="button" class="btn small ghost" @click="clearAllPriorMatches()" :disabled="!priorMatchedIndices.length" title="Clear every prior-matched override (leaves your manual edits intact)">Clear matches</button>
+          </span>
+          <label class="inline-toggle" @click.stop>
+            New edits as:
+            <select x-model="defaultEditMode" @change="persistMode()">
+              <option value="point">Point (this segment only)</option>
+              <option value="anchor">Anchor (interpolate)</option>
+            </select>
+          </label>
+          <button class="chevron" @click.stop="toggleCollapse('grid')" x-text="isCollapsed('grid') ? '▶' : '▼'"></button>
+        </span>
+      </h2>
+      <div class="panel-body" x-show="!isCollapsed('grid')">
+        <p class="hint">Edit GAP, Pace, Cum (incl. stops) or ETA to anchor a segment. Cum and ETA include cumulative stoppage.</p>
+        <div class="grid-scroll" @keydown="onCellKeydown($event)">
+          <table class="seg-grid">
+            <thead>
+              <tr>
+                <th class="num col-seg">#</th>
+                <th class="num col-km">km</th>
+                <th class="num col-dist">dist</th>
+                <th class="num col-gain">gain</th>
+                <th class="num col-loss">loss</th>
+                <th class="num col-net">net</th>
+                <th class="num col-grade">grade</th>
+                <th class="num col-pace" x-show="showMovingPace">GAP</th>
+                <th class="num col-pace" x-show="showMovingPace">pace</th>
+                <th class="num col-pace col-prior" x-show="showPriorOverlay.grid && priorRun">prior pace</th>
+                <th class="num col-pace col-prior-hr" x-show="showPriorOverlay.gridHR && priorRun">prior HR</th>
+                <th class="num col-pace" x-show="showElapsedPace">GAP (E)</th>
+                <th class="num col-pace" x-show="showElapsedPace">pace (E)</th>
+                <th class="num col-pace" x-show="showPaceStop" title="Per-km pace including stoppage">pace + stop</th>
+                <th class="num col-time">moving time</th>
+                <th class="num col-time">elapsed time</th>
+                <th class="num col-time">ETA</th>
+                <th class="num col-tech">technical</th>
+                <th class="num col-mode">mode</th>
+                <th class="num col-extra" x-show="showCarbs">carbs g</th>
+                <th class="num col-extra" x-show="showGelsCol"># gels</th>
+                <th class="num col-extra" x-show="showFluidLCol">fluid L</th>
+                <th class="col-filler"></th>
+              </tr>
+            </thead>
+            <template x-for="(seg, i) in segments" :key="seg.idx">
+              <tbody>
+                <template x-if="segCheckpoint(seg)">
+                  <tr class="cp-heading-row"
+                      :style="'border-top-color:' + (segCheckpoint(seg).color || 'var(--accent-2)') + ';background-color:' + cpRowBg(segCheckpoint(seg).color)">
+                    <td :colspan="12 + (showMovingPace ? 2 : 0) + (showElapsedPace ? 2 : 0) + (showPaceStop ? 1 : 0) + (showPriorOverlay.grid && priorRun ? 1 : 0) + (showPriorOverlay.gridHR && priorRun ? 1 : 0)">
+                      <span class="cp-dot" :style="'background:' + (segCheckpoint(seg).color || 'var(--accent-2)')"></span>
+                      <strong x-text="segCheckpoint(seg).id" :style="'color:' + (segCheckpoint(seg).color || 'var(--accent-2)')"></strong>
+                      <span x-text="' · ' + segCheckpoint(seg).name + ' · km ' + segCheckpoint(seg).km.toFixed(1)"></span>
+                      <span class="stop-pill">
+                        stopping time
+                        <div class="num-input compact inline-stop-wrap">
+                          <input type="text" class="num inline-stop"
+                                 :value="formatStop(segCheckpoint(seg).stoppageSec)"
+                                 @change="onStoppageEdit(segCheckpoint(seg), $event)"
+                                 placeholder="0:00" />
+                          <button type="button" class="step up" @click="bumpStoppage(segCheckpoint(seg), 1)" title="+5s">▲</button>
+                          <button type="button" class="step dn" @click="bumpStoppage(segCheckpoint(seg), -1)" title="−5s">▼</button>
+                        </div>
+                      </span>
+                    </td>
+                    <td class="num restock-cell col-extra" x-show="showCarbs"
+                        x-text="((cpRestockNeed[segCheckpoint(seg)._uid]?.carbsG) || 0) > 0 ? '+' + Math.round(cpRestockNeed[segCheckpoint(seg)._uid].carbsG) + ' g' : ''"></td>
+                    <td class="num restock-cell col-extra" x-show="showGelsCol">
+                      <template x-if="cpDropbagGelTotal(segCheckpoint(seg)) > 0">
+                        <span x-text="'+' + cpDropbagGelTotal(segCheckpoint(seg))"></span>
+                      </template>
+                    </td>
+                    <td class="num restock-cell col-extra" x-show="showFluidLCol">
+                      <template x-if="(segCheckpoint(seg).dropbag?.fluidL || 0) + (segCheckpoint(seg).dropbag?.waterL || 0) > 0">
+                        <span x-text="'+' + ((segCheckpoint(seg).dropbag.fluidL || 0) + (segCheckpoint(seg).dropbag.waterL || 0)).toFixed(1) + 'L'"></span>
+                      </template>
+                    </td>
+                    <td class="col-filler"></td>
+                  </tr>
+                </template>
+                <tr
+                  :class="{ hovered: hoverKm !== null && hoverKm >= seg.startKm && hoverKm < seg.endKm, 'has-cp': segCheckpoint(seg), 'is-tech': isTechnical(seg.idx) }"
+                  :style="segCheckpoint(seg) ? ('background-color:' + cpRowBg(segCheckpoint(seg).color) + ';box-shadow: inset 3px 0 0 ' + (segCheckpoint(seg).color || 'var(--accent-2)')) : ''"
+                  :data-seg-idx="seg.idx"
+                  @mouseenter="setHoverFromGrid(seg.startKm + seg.distKm/2)"
+                  @mouseleave="setHoverFromGrid(null)"
+                >
+                  <td class="num col-seg" x-text="seg.idx + 1"></td>
+                  <td class="num col-km" x-text="seg.startKm.toFixed(1) + '–' + seg.endKm.toFixed(1)"></td>
+                  <td class="num col-dist" x-text="seg.distKm.toFixed(2)"></td>
+                  <td class="num gain col-gain" x-text="seg.gainM > 0 ? '+' + Math.round(seg.gainM) : '0'"></td>
+                  <td class="num loss col-loss" x-text="seg.lossM > 0 ? '-' + Math.round(seg.lossM) : '0'"></td>
+                  <td class="num col-net" x-text="(seg.netM >= 0 ? '+' : '') + Math.round(seg.netM)"></td>
+                  <td class="num grade col-grade" :class="gradeClass(seg.avgGradePct)" x-text="seg.avgGradePct.toFixed(1) + '%'"></td>
+                  <td class="col-pace" x-show="showMovingPace">
+                    <div class="num-input compact">
+                      <input type="text" class="gap-cell editable num" :class="{ edited: isOverride(seg.idx) }" :value="formatPace(segGaps[i])" @change="onGapEdit(seg.idx, $event)" />
+                      <button type="button" class="step up" @click="bumpSegGap(seg.idx, -1)" title="Faster (snap −5s)">▲</button>
+                      <button type="button" class="step dn" @click="bumpSegGap(seg.idx, 1)" title="Slower (snap +5s)">▼</button>
+                    </div>
+                  </td>
+                  <td class="col-pace" x-show="showMovingPace">
+                    <div class="num-input compact">
+                      <input type="text" class="pace-cell editable num" :class="{ edited: isOverride(seg.idx) }" :value="formatPace(segPaces[i])" @change="onPaceEdit(seg.idx, $event)" />
+                      <button type="button" class="step up" @click="bumpSegPace(seg.idx, -1)" title="Faster (snap −5s)">▲</button>
+                      <button type="button" class="step dn" @click="bumpSegPace(seg.idx, 1)" title="Slower (snap +5s)">▼</button>
+                    </div>
+                  </td>
+                  <td class="num col-pace col-prior pace-with-match" x-show="showPriorOverlay.grid && priorRun" :class="priorPaceDeltaClass(i)">
+                    <button type="button" class="match-prior-btn"
+                            x-show="priorRun && Number.isFinite(priorRun?.priorSegPaces?.[i])"
+                            :class="{ active: isPriorMatched(seg.idx) }"
+                            @click="togglePriorMatch(seg.idx)"
+                            :title="isPriorMatched(seg.idx) ? 'Revert: clear prior-matched override' : (priorRun ? 'Match prior pace ' + formatPace(priorRun.priorSegPaces[i]) + ' (overrides this segment)' : '')">≈</button>
+                    <span class="prior-pace-text" x-text="priorPaceForSeg(i) != null ? formatPace(priorPaceForSeg(i)) : '—'"></span>
+                  </td>
+                  <td class="num col-pace col-prior-hr" x-show="showPriorOverlay.gridHR && priorRun" x-text="priorHRForSeg(i) != null ? Math.round(priorHRForSeg(i)) + ' bpm' : '—'"></td>
+                  <td class="num col-pace" x-show="showElapsedPace" x-text="formatPace(segElapsedGap[i] || 0)"></td>
+                  <td class="num col-pace" x-show="showElapsedPace" x-text="formatPace(segElapsedPace[i] || 0)"></td>
+                  <td class="num col-pace" x-show="showPaceStop" x-text="formatPace(segElapsedPace[i] || 0)"></td>
+                  <td class="col-time">
+                    <div class="num-input compact">
+                      <input type="text" class="editable num" :class="{ edited: isOverride(seg.idx) }" :value="formatTime(segCumSec[i] || 0)" @change="onMovingTimeEdit(seg.idx, $event)" />
+                      <button type="button" class="step up" @click="bumpSegMovingTime(seg.idx, 1)" title="+5s moving">▲</button>
+                      <button type="button" class="step dn" @click="bumpSegMovingTime(seg.idx, -1)" title="−5s moving">▼</button>
+                    </div>
+                  </td>
+                  <td class="col-time">
+                    <div class="num-input compact">
+                      <input type="text" class="editable num" :class="{ edited: isOverride(seg.idx) }" :value="formatTime(segCumWithStop[i])" @change="onCumEdit(seg.idx, $event)" />
+                      <button type="button" class="step up" @click="bumpSegCum(seg.idx, 1)" title="+5s elapsed">▲</button>
+                      <button type="button" class="step dn" @click="bumpSegCum(seg.idx, -1)" title="−5s elapsed">▼</button>
+                    </div>
+                  </td>
+                  <td class="col-time">
+                    <div class="num-input compact">
+                      <input type="text" class="editable num" :class="{ edited: isOverride(seg.idx) }" :value="segETAs[i]" @change="onETAEdit(seg.idx, $event)" />
+                      <button type="button" class="step up" @click="bumpSegETA(seg.idx, 1)" title="+5s ETA">▲</button>
+                      <button type="button" class="step dn" @click="bumpSegETA(seg.idx, -1)" title="−5s ETA">▼</button>
+                    </div>
+                  </td>
+                  <td>
+                    <input type="checkbox" :checked="isTechnical(seg.idx)" @change="toggleTechnical(seg.idx)" :title="'Mark as technical (×' + technicalSlowdown.toFixed(2) + ')'" />
+                  </td>
+                  <td>
+                    <template x-if="isOverride(seg.idx)">
+                      <span class="mode-controls">
+                        <button class="mode-toggle" :class="overrideMode(seg.idx)" @click="toggleOverrideMode(seg.idx)" :title="overrideMode(seg.idx) === 'anchor' ? 'Anchor — interpolates between anchors. Click for Point.' : 'Point — affects only this segment. Click for Anchor.'"
+                          x-text="overrideMode(seg.idx) === 'anchor' ? 'A' : 'P'"></button>
+                        <button class="btn-x clear-btn" @click="clearOverride(seg.idx)" title="Clear">↺</button>
+                      </span>
+                    </template>
+                  </td>
+                  <td class="num col-extra" x-show="showCarbs" x-text="segCumCarbsG[i] != null ? Math.round(segCumCarbsG[i]) : ''"></td>
+                  <td class="num col-extra" x-show="showGelsCol" x-text="segCumGels[i] != null ? segCumGels[i] : ''"></td>
+                  <td class="num col-extra" x-show="showFluidLCol" x-text="segCumFluidL[i] != null ? segCumFluidL[i].toFixed(2) : ''"></td>
+                  <td class="col-filler"></td>
+                </tr>
+              </tbody>
+            </template>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</template>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+  import Alpine from 'https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm.js';
+  import { trailPlannerComponent } from './src/app.js?v=v34';
+  window.Alpine = Alpine;
+  Alpine.data('trailPlanner', trailPlannerComponent);
+  Alpine.start();
+</script>
+
+</body>
+</html>

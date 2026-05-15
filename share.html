@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Trail Pace — Crew View</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<link rel="stylesheet" href="./styles.css?v=v34" />
+<style>
+  /* === Share view: mobile-first, dark by default. Inline so the file is
+        self-contained (any styles.css refactor in the planner can't break
+        crew's view, and the standalone HTML export works with no
+        external CSS). === */
+  body.share-body {
+    --share-bg: #0d1117;
+    --share-fg: #e6edf3;
+    --share-fg-dim: #8b949e;
+    --share-panel: #161b22;
+    --share-panel-border: #30363d;
+    --share-accent: #ff8c42;
+    --share-accent-alt: #58a6ff;
+    --share-pill-bg: rgba(255, 140, 66, 0.12);
+    --share-pill-fg: #ff8c42;
+    --share-pill-err-bg: rgba(255, 80, 80, 0.18);
+    --share-pill-err-fg: #ff7a7a;
+    --share-row-soft: rgba(255,255,255,0.03);
+    --share-input-bg: rgba(255,255,255,0.04);
+
+    margin: 0;
+    padding: 0;
+    background: var(--share-bg);
+    color: var(--share-fg);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    -webkit-text-size-adjust: 100%;
+  }
+  /* Light theme — opt-in via the header's theme toggle, persisted in
+     share-view-prefs. Inverts the panel/text/dim vars; accents stay
+     vivid against either background. */
+  body.share-body.light {
+    --share-bg: #f6f8fa;
+    --share-fg: #1f2328;
+    --share-fg-dim: #57606a;
+    --share-panel: #ffffff;
+    --share-panel-border: #d0d7de;
+    --share-pill-bg: rgba(255, 140, 66, 0.18);
+    --share-pill-fg: #c8530f;
+    --share-pill-err-bg: rgba(207, 34, 46, 0.12);
+    --share-pill-err-fg: #cf222e;
+    --share-row-soft: rgba(0,0,0,0.025);
+    --share-input-bg: rgba(0,0,0,0.04);
+  }
+  .share-wrap { max-width: 720px; margin: 0 auto; padding: 12px 12px 80px; }
+
+  .share-header {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 12px 14px; margin-bottom: 12px;
+    background: var(--share-panel);
+    border: 1px solid var(--share-panel-border);
+    border-radius: 10px;
+  }
+  .share-header h1 { font-size: 18px; margin: 0; line-height: 1.25; }
+  .share-header .meta { color: var(--share-fg-dim); font-size: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .share-pill {
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+    background: var(--share-pill-bg); color: var(--share-pill-fg);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; margin-top: 4px;
+  }
+  .share-pill.error { background: var(--share-pill-err-bg); color: var(--share-pill-err-fg); }
+
+  .header-bottom-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-top: 4px;
+  }
+  .prefs-toggle {
+    background: transparent; border: 1px solid var(--share-panel-border);
+    color: var(--share-fg-dim);
+    font-size: 11px; padding: 3px 10px; border-radius: 999px;
+    cursor: pointer;
+  }
+  .prefs-toggle.open { background: var(--share-row-soft); color: var(--share-fg); }
+  .header-right-actions { display: flex; gap: 6px; align-items: center; }
+  .theme-toggle {
+    background: transparent;
+    border: 1px solid var(--share-panel-border);
+    color: var(--share-fg);
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background 120ms ease;
+  }
+  .theme-toggle:hover { background: var(--share-row-soft); }
+
+  .share-prefs {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--share-panel-border);
+    border-radius: 8px;
+    font-size: 12px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .prefs-row {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .prefs-label {
+    color: var(--share-fg-dim); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em; min-width: 86px;
+  }
+  .prefs-segmented {
+    display: inline-flex; border: 1px solid var(--share-panel-border);
+    border-radius: 6px; overflow: hidden;
+  }
+  .prefs-segmented button {
+    background: transparent; border: none; color: var(--share-fg-dim);
+    padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  .prefs-segmented button.active {
+    background: var(--share-accent); color: #fff; font-weight: 600;
+  }
+  .prefs-checks { display: flex; gap: 12px; flex-wrap: wrap; }
+  .prefs-checks label, .prefs-toggle-inline {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: var(--share-fg); cursor: pointer;
+  }
+
+  /* Scenario picker (Plan A / B / C / Prior). Sits below the status pill
+     in the header, only renders when the runner ships >1 plan. */
+  .share-scenario-bar {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .share-scenario-segmented {
+    display: inline-flex;
+    border: 1px solid var(--share-panel-border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .share-scenario-segmented button {
+    background: transparent; border: none;
+    color: var(--share-fg-dim);
+    padding: 4px 12px;
+    font-size: 12px; font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .share-scenario-segmented button.active {
+    background: var(--share-accent); color: #fff;
+  }
+  .share-scenario-segmented button:not(.active):hover {
+    background: var(--share-row-soft); color: var(--share-fg);
+  }
+
+  /* Spectator point styling */
+  .share-spectator-icon { background: transparent !important; border: none !important; }
+  .share-spectator-diamond {
+    width: 14px; height: 14px;
+    transform: rotate(45deg);
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
+  }
+  tr.is-spectator { background: rgba(163, 113, 247, 0.04); }
+  .sp-glyph { color: #a371f7; font-size: 12px; margin-left: 4px; }
+  .sp-tag {
+    margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+    background: rgba(163, 113, 247, 0.18); color: #c08bff;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+
+  /* Share-view CP permanent tooltips: tighter than the planner's
+     default since mobile screens have less room. Theme-aware so light
+     mode shows dark-on-light (readable) and dark mode shows light-on-dark. */
+  .share-cp-permanent {
+    background: rgba(13, 17, 23, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #e6edf3;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  }
+  body.share-body.light .share-cp-permanent {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    color: #1f2328;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+  }
+  .share-cp-permanent::before { display: none; }
+  /* Leaflet's own permanent .cp-permanent class — share-side override
+     ensures any leftover classname stays themed too. */
+  body.share-body.light .leaflet-tooltip.cp-permanent {
+    background: rgba(255, 255, 255, 0.96);
+    color: #1f2328;
+    border-color: rgba(0,0,0,0.12);
+  }
+
+  .share-panel {
+    background: var(--share-panel);
+    border: 1px solid var(--share-panel-border);
+    border-radius: 10px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .share-panel-header {
+    padding: 10px 14px;
+    font-weight: 600;
+    color: var(--share-fg);
+    border-bottom: 1px solid var(--share-panel-border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .share-panel-header .hint { font-weight: 400; font-size: 11px; color: var(--share-fg-dim); }
+  .share-panel-body { padding: 10px 12px; }
+
+  /* Map */
+  #share-map { height: 55vh; max-height: 480px; min-height: 320px; border-radius: 6px; position: relative; }
+  #share-map .leaflet-container { background: #1a1f26; }
+  body.share-body.light #share-map .leaflet-container { background: #e8edf3; }
+  /* Larger touch targets for crew on phones. */
+  #share-map .leaflet-marker-icon, #share-map .leaflet-marker-shadow { cursor: pointer; }
+
+  /* Hover overlay — shows km + ETA + pace when crew hover (or tap) the
+     map. Pinned bottom-left so it doesn't obscure the route or markers. */
+  .share-map-hover-overlay {
+    position: absolute;
+    bottom: 8px; left: 8px;
+    background: rgba(13, 17, 23, 0.86);
+    color: #e6edf3;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    z-index: 500;
+    pointer-events: none;
+    max-width: calc(100% - 80px);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  }
+  body.share-body.light .share-map-hover-overlay {
+    background: rgba(255, 255, 255, 0.94);
+    color: #1f2328;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+  }
+
+  /* Simplified nutrition + ETA table — mobile-friendly stacked rows on
+     narrow screens, table on wider. */
+  .share-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .share-table th, .share-table td {
+    padding: 8px 6px; text-align: left;
+    border-bottom: 1px solid var(--share-panel-border);
+    vertical-align: top;
+  }
+  .share-table th {
+    font-weight: 600; color: var(--share-fg-dim);
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .share-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .share-table .cp-cell { display: flex; flex-direction: column; gap: 2px; }
+  .share-table .cp-code { font-weight: 700; }
+  .share-table .cp-name { color: var(--share-fg-dim); font-size: 11px; }
+  .share-table .cp-stripe {
+    display: inline-block; width: 4px; height: 16px;
+    border-radius: 2px; margin-right: 6px; vertical-align: middle;
+  }
+  .share-table .gel-cell { font-variant-numeric: tabular-nums; text-align: right; }
+  .share-table .gel-cell-zero { color: var(--share-fg-dim); opacity: 0.4; }
+  .share-table .delta-faster { color: #6bcf7f; }
+  .share-table .delta-slower { color: #ff7a7a; }
+  .share-table .delta-zero { color: var(--share-fg-dim); }
+
+  .share-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 5px 10px; border-radius: 6px;
+    background: rgba(255, 140, 66, 0.12); color: #ff8c42;
+    border: 1px solid rgba(255, 140, 66, 0.35);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    text-decoration: none; white-space: nowrap;
+  }
+  .share-btn:hover, .share-btn:active { background: rgba(255, 140, 66, 0.2); }
+
+  /* Read-only chart panels */
+  .chart-panel-header {
+    cursor: pointer;
+    user-select: none;
+  }
+  .chart-chevron {
+    color: var(--share-fg-dim);
+    font-size: 10px;
+  }
+  .chart-body {
+    padding: 8px 10px 12px;
+  }
+  .chart-wrap {
+    position: relative;
+    height: 220px;
+    width: 100%;
+  }
+  .chart-wrap.eta { height: 260px; }
+  .p3d-wrap {
+    position: relative;
+    height: 320px;
+    width: 100%;
+    background: var(--share-row-soft);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  body.share-body.light .p3d-wrap { background: #eef1f4; }
+
+  /* 3D route profile CP labels — the "little box" style mirrors the
+     planner's. Inlined here (not relying on styles.css) so the share
+     view + standalone export both look identical regardless of which
+     CSS files happen to load. */
+  body.share-body .cp3d-label {
+    background: rgba(13, 17, 23, 0.92);
+    border: 1.5px solid var(--share-accent-alt);
+    color: var(--share-fg);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    pointer-events: none;
+    line-height: 1.3;
+  }
+  body.share-body.light .cp3d-label {
+    background: rgba(255, 255, 255, 0.96);
+    color: #1f2328;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+  }
+  body.share-body .cp3d-label strong {
+    color: var(--share-accent);
+    margin-right: 2px;
+  }
+
+  /* Footer */
+  .share-footer {
+    text-align: center; font-size: 11px; color: var(--share-fg-dim);
+    padding: 8px 12px;
+  }
+  .share-footer a { color: var(--share-accent); }
+
+  /* CP action sheet — slides up from bottom on tap. */
+  .cp-sheet-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+    z-index: 1000;
+    display: flex; align-items: flex-end; justify-content: center;
+    animation: cp-sheet-fade-in 120ms ease-out;
+  }
+  @keyframes cp-sheet-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  .cp-sheet {
+    background: var(--share-panel);
+    border-top: 1px solid var(--share-panel-border);
+    border-radius: 16px 16px 0 0;
+    width: 100%; max-width: 720px;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom)) 16px;
+    animation: cp-sheet-up 200ms ease-out;
+  }
+  @keyframes cp-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .cp-sheet h3 { margin: 0 0 4px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .cp-sheet .sub { color: var(--share-fg-dim); font-size: 12px; }
+  .cp-sheet-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin: 12px 0;
+  }
+  .cp-sheet-grid .kv { padding: 8px; background: rgba(255,255,255,0.03); border-radius: 6px; }
+  .cp-sheet-grid .kv .label { color: var(--share-fg-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .cp-sheet-grid .kv .value { font-weight: 700; font-size: 14px; margin-top: 2px; }
+  .cp-sheet-dir {
+    display: flex; gap: 8px; margin-top: 12px;
+  }
+  .cp-sheet-dir a {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    padding: 12px; border-radius: 8px;
+    font-weight: 700; text-decoration: none;
+    background: var(--share-accent); color: #fff;
+  }
+  .cp-sheet-dir a.apple {
+    background: var(--share-accent-alt);
+  }
+  .cp-sheet-close {
+    width: 100%; padding: 10px; margin-top: 10px;
+    background: transparent; border: 1px solid var(--share-panel-border);
+    color: var(--share-fg); border-radius: 8px; font-weight: 600; cursor: pointer;
+  }
+
+  .empty-share {
+    text-align: center; padding: 60px 20px; color: var(--share-fg-dim);
+  }
+  .empty-share h2 { color: var(--share-fg); }
+
+  @media (max-width: 480px) {
+    .share-wrap { padding: 8px 8px 80px; }
+    .share-table th, .share-table td { padding: 6px 4px; font-size: 12px; }
+    #share-map { height: 50vh; }
+  }
+</style>
+</head>
+<body class="share-body" :class="{ light: prefs.theme === 'light' }" x-data="shareView()" x-init="init()">
+
+<div class="share-wrap">
+
+  <!-- Header -->
+  <header class="share-header">
+    <h1>
+      <span x-text="raceName"></span>
+      <small style="font-weight: 400; color: var(--share-fg-dim);" x-show="totalKmText" x-text="' · ' + totalKmText"></small>
+    </h1>
+    <div class="meta">
+      <span x-show="raceDate"><strong>Race:</strong> <span x-text="raceDate"></span></span>
+      <span x-show="raceStartText"><strong>Start:</strong> <span x-text="raceStartFormatted"></span></span>
+      <span x-show="finishText && finishText !== '—'"><strong>Finish ETA:</strong> <span x-text="finishText"></span></span>
+      <span x-show="planTotalText && planTotalText !== '—'"><strong>Plan:</strong> <span x-text="planTotalText"></span></span>
+      <span x-show="hasPrior"><strong x-text="'vs ' + priorLabel + ':'"></strong> <span x-text="priorTotalText"></span></span>
+    </div>
+    <div class="header-bottom-row">
+      <span class="share-pill" :class="{ error: ['expired','not-found','invalid-token','error'].includes(status) }" x-text="statusText"></span>
+      <div class="header-right-actions">
+        <button class="theme-toggle" @click="toggleTheme()" :title="prefs.theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'">
+          <span x-text="prefs.theme === 'light' ? '☾' : '☀'"></span>
+        </button>
+        <button class="prefs-toggle" @click="showPrefs = !showPrefs" :class="{ open: showPrefs }">
+          <span x-text="showPrefs ? '× Close' : '⚙ View options'"></span>
+        </button>
+      </div>
+    </div>
+    <!-- Scenario picker — only renders when the runner ships >1 plan
+         (or a Prior Race is loaded). Lets crew compare ETAs under each
+         plan without the runner re-publishing. -->
+    <div class="share-scenario-bar" x-show="hasScenarios">
+      <span class="prefs-label">Plan</span>
+      <div class="share-scenario-segmented">
+        <template x-for="opt in scenarioPickerOptions" :key="opt.key">
+          <button :class="{ active: selectedScenario === opt.key }"
+                  @click="setShareScenario(opt.key)"
+                  x-text="opt.label"></button>
+        </template>
+      </div>
+    </div>
+    <!-- View options strip: per-viewer prefs (clock format, label fields,
+         spectator-points visibility). Persisted in localStorage so each
+         crew member's phone remembers their own setup. -->
+    <div class="share-prefs" x-show="showPrefs" x-transition.opacity>
+      <div class="prefs-row">
+        <span class="prefs-label">Clock</span>
+        <div class="prefs-segmented">
+          <button :class="{ active: prefs.clock === '24h' }" @click="setClock('24h')">24h</button>
+          <button :class="{ active: prefs.clock === '12h' }" @click="setClock('12h')">AM/PM</button>
+        </div>
+      </div>
+      <div class="prefs-row">
+        <span class="prefs-label">Map labels</span>
+        <div class="prefs-checks">
+          <label><input type="checkbox" :checked="prefs.labels.code" @change="toggleLabel('code')"> Code</label>
+          <label><input type="checkbox" :checked="prefs.labels.name" @change="toggleLabel('name')"> Name</label>
+          <label><input type="checkbox" :checked="prefs.labels.km" @change="toggleLabel('km')"> km</label>
+          <label><input type="checkbox" :checked="prefs.labels.eta" @change="toggleLabel('eta')"> ETA</label>
+        </div>
+      </div>
+      <div class="prefs-row" x-show="hasSpectators">
+        <span class="prefs-label">Spectator points</span>
+        <label class="prefs-toggle-inline">
+          <input type="checkbox" :checked="prefs.showSpectatorPoints" @change="toggleSpectatorPoints()">
+          Show on map + ETAs
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <!-- Error state (covers not-found, invalid-token, error) -->
+  <template x-if="['not-found','invalid-token','error'].includes(status)">
+    <div class="empty-share">
+      <h2>Can't load this share</h2>
+      <p x-text="errorMsg || 'The share link looks invalid or the run was removed.'"></p>
+      <p>Ask the runner for a fresh link.</p>
+    </div>
+  </template>
+
+  <!-- Expired state -->
+  <template x-if="status === 'expired'">
+    <div class="empty-share">
+      <h2>This share link has expired</h2>
+      <p>Ask the runner for a fresh link.</p>
+    </div>
+  </template>
+
+  <!-- Loading state -->
+  <template x-if="status === 'loading'">
+    <div class="empty-share">
+      <h2>Loading…</h2>
+    </div>
+  </template>
+
+  <!-- OK state: Map + Nutrition + ETA -->
+  <template x-if="status === 'ok'">
+    <div>
+
+      <!-- Map -->
+      <section class="share-panel">
+        <div class="share-panel-header">
+          Map
+          <span class="hint">Tap a checkpoint for directions</span>
+        </div>
+        <div class="share-panel-body" style="padding: 8px;">
+          <div id="share-map"></div>
+        </div>
+      </section>
+
+      <!-- Simplified nutrition: per-CP fluid + gel handover -->
+      <section class="share-panel" x-show="cpRows.length > 0">
+        <div class="share-panel-header">
+          Nutrition handover per CP
+          <span class="hint">What to give the runner</span>
+        </div>
+        <div class="share-panel-body" style="overflow-x: auto;">
+          <table class="share-table">
+            <thead>
+              <tr>
+                <th>Checkpoint</th>
+                <th class="num">Arrival</th>
+                <th class="num">Fluid</th>
+                <template x-for="gt in gelTypes" :key="gt.id">
+                  <th class="num" x-text="gt.name"></th>
+                </template>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="row in cpRows" :key="row.uid || row.id">
+                <tr>
+                  <td>
+                    <div class="cp-cell">
+                      <span>
+                        <span class="cp-stripe" :style="'background: ' + row.color"></span>
+                        <span class="cp-code" x-text="row.id"></span>
+                      </span>
+                      <span class="cp-name" x-text="row.name + ' · km ' + row.km.toFixed(1)"></span>
+                    </div>
+                  </td>
+                  <td class="num" x-text="fmtClock(raceStartSec + row.planArrivalSec)"></td>
+                  <td class="num">
+                    <span x-show="row.fluidL > 0" x-text="row.fluidL.toFixed(1) + ' L'"></span>
+                    <small x-show="row.waterL > 0" style="display:block;color:var(--share-fg-dim);" x-text="'+ ' + row.waterL.toFixed(1) + ' L water'"></small>
+                    <span x-show="row.fluidL === 0 && row.waterL === 0" style="color:var(--share-fg-dim);">—</span>
+                  </td>
+                  <template x-for="g in row.gelsByType" :key="g.id">
+                    <td class="gel-cell" :class="{ 'gel-cell-zero': g.count === 0 }" x-text="g.count"></td>
+                  </template>
+                  <td>
+                    <button class="share-btn" @click="openSheet({ _uid: row.uid, id: row.id })" title="Directions + drop-bag details">Details ▾</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ETA list. CPs + spectator points interleaved by km when enabled. -->
+      <section class="share-panel" x-show="cpRows.length > 0">
+        <div class="share-panel-header">
+          ETAs
+          <span class="hint">
+            <span x-show="hasPrior">+/− = vs last year</span>
+            <span x-show="hasSpectators && prefs.showSpectatorPoints" style="margin-left:8px;">◆ = spectator point</span>
+          </span>
+        </div>
+        <div class="share-panel-body" style="overflow-x: auto;">
+          <table class="share-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Checkpoint</th>
+                <th class="num">km</th>
+                <th class="num">Arrive</th>
+                <th class="num">Depart</th>
+                <th class="num" x-show="hasPrior">vs last yr</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="row in combinedRows" :key="row.uid || row.id">
+                <tr :class="{ 'is-spectator': row.isSpectator }">
+                  <td>
+                    <span class="cp-stripe" :style="'background: ' + row.color"></span>
+                    <span x-show="row.isSpectator" class="sp-glyph" title="Spectator point">◆</span>
+                  </td>
+                  <td>
+                    <strong x-text="row.id"></strong>
+                    <span style="color:var(--share-fg-dim);" x-text="' ' + row.name"></span>
+                  </td>
+                  <td class="num" x-text="row.km.toFixed(1)"></td>
+                  <td class="num" x-text="fmtClock(raceStartSec + row.planArrivalSec)"></td>
+                  <td class="num" x-text="row.isSpectator ? '—' : fmtClock(raceStartSec + row.planArrivalSec + row.stoppageSec)"></td>
+                  <td class="num" x-show="hasPrior"
+                      :class="{ 'delta-faster': row.priorDeltaSec != null && row.priorDeltaSec < -5, 'delta-slower': row.priorDeltaSec != null && row.priorDeltaSec > 5, 'delta-zero': row.priorDeltaSec != null && Math.abs(row.priorDeltaSec) <= 5 }"
+                      x-text="row.priorDeltaText || '—'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Read-only chart panels (V4 v4.3). Collapsed by default to keep
+           the mobile load short; expand to drill in. Re-renders when the
+           viewer switches scenarios. Edits are disabled (segpace's
+           drag-to-edit is just unwired). -->
+      <section class="share-panel chart-panel">
+        <div class="share-panel-header chart-panel-header" @click="toggleChartPanel('elev')">
+          Elevation profile
+          <span class="chart-chevron" x-text="chartsExpanded.elev ? '▼' : '▶'"></span>
+        </div>
+        <div class="share-panel-body chart-body" x-show="chartsExpanded.elev" x-transition.opacity>
+          <div class="chart-wrap"><canvas id="share-elev-canvas"></canvas></div>
+        </div>
+      </section>
+
+      <section class="share-panel chart-panel">
+        <div class="share-panel-header chart-panel-header" @click="toggleChartPanel('segpace')">
+          Per-segment pace
+          <span class="chart-chevron" x-text="chartsExpanded.segpace ? '▼' : '▶'"></span>
+        </div>
+        <div class="share-panel-body chart-body" x-show="chartsExpanded.segpace" x-transition.opacity>
+          <div class="chart-wrap"><canvas id="share-segpace-canvas"></canvas></div>
+        </div>
+      </section>
+
+      <section class="share-panel chart-panel">
+        <div class="share-panel-header chart-panel-header" @click="toggleChartPanel('cumpace')">
+          Cumulative pace
+          <span class="chart-chevron" x-text="chartsExpanded.cumpace ? '▼' : '▶'"></span>
+        </div>
+        <div class="share-panel-body chart-body" x-show="chartsExpanded.cumpace" x-transition.opacity>
+          <div class="chart-wrap"><canvas id="share-cumpace-canvas"></canvas></div>
+        </div>
+      </section>
+
+      <section class="share-panel chart-panel">
+        <div class="share-panel-header chart-panel-header" @click="toggleChartPanel('p3d')">
+          3D route profile
+          <span class="chart-chevron" x-text="chartsExpanded.p3d ? '▼' : '▶'"></span>
+        </div>
+        <div class="share-panel-body chart-body" x-show="chartsExpanded.p3d" x-transition.opacity>
+          <div id="share-p3d" class="p3d-wrap"></div>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="share-footer">
+        <div>Snapshot taken <span x-text="snapshotAgo"></span></div>
+        <div x-show="expiresOnText">Link expires <span x-text="expiresOnText"></span></div>
+        <div style="margin-top:6px;">
+          <a href="./">Trail Pace Planner</a>
+        </div>
+      </footer>
+
+    </div>
+  </template>
+
+  <!-- CP action sheet overlay -->
+  <template x-if="sheetCp">
+    <div class="cp-sheet-backdrop" @click.self="closeSheet()">
+      <div class="cp-sheet" role="dialog" aria-modal="true" @click.stop>
+        <h3>
+          <span class="cp-stripe" :style="'background: ' + sheetCp.color"></span>
+          <span x-text="sheetCp.id + ' · ' + sheetCp.name"></span>
+        </h3>
+        <div class="sub">
+          km <span x-text="sheetCp.km.toFixed(1)"></span>
+          · arrive <span x-text="fmtClock(raceStartSec + (sheetCp.planArrivalSec || 0))"></span>
+          <template x-if="!sheetCp.isSpectator">
+            <span>· depart <span x-text="fmtClock(raceStartSec + (sheetCp.planArrivalSec || 0) + (sheetCp.stoppageSec || 0))"></span></span>
+          </template>
+          <template x-if="sheetCp.isSpectator">
+            <span class="sp-tag">spectator point</span>
+          </template>
+        </div>
+
+        <div class="cp-sheet-grid" x-show="!sheetCp.isSpectator && !sheetCp.isFreePoint">
+          <div class="kv">
+            <div class="label">Fluid</div>
+            <div class="value" x-text="sheetCp.fluidL > 0 ? sheetCp.fluidL.toFixed(1) + ' L' : '—'"></div>
+          </div>
+          <div class="kv">
+            <div class="label">Water</div>
+            <div class="value" x-text="sheetCp.waterL > 0 ? sheetCp.waterL.toFixed(1) + ' L' : '—'"></div>
+          </div>
+          <template x-for="g in sheetCp.gelsByType" :key="g.id">
+            <div class="kv">
+              <div class="label" x-text="g.name"></div>
+              <div class="value" x-text="g.count"></div>
+            </div>
+          </template>
+        </div>
+
+        <div x-show="sheetCp.dropNotes" style="margin: 6px 0; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 12px; color: var(--share-fg-dim);">
+          <strong style="color:var(--share-fg);">Notes:</strong> <span x-text="sheetCp.dropNotes"></span>
+        </div>
+
+        <div class="cp-sheet-dir">
+          <a :href="googleHref(sheetCp)" target="_blank" rel="noopener noreferrer">
+            Open in Google Maps
+          </a>
+          <a :href="appleHref(sheetCp)" target="_blank" rel="noopener noreferrer" class="apple">
+            Open in Apple Maps
+          </a>
+        </div>
+
+        <button class="cp-sheet-close" @click="closeSheet()">Close</button>
+      </div>
+    </div>
+  </template>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- es-module-shims polyfills the importmap + data-URI module loading
+     on older mobile Safari / Android browsers that pre-date native
+     support (Safari iOS < 16.4, Android < 89). Modern browsers skip it
+     entirely. Cost: ~25 KB on first load; cached after. -->
+<script async src="https://ga.jspm.io/npm:es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+  import Alpine from 'https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm.js';
+  import { shareView } from './src/share/shareView.js?v=v34';
+  window.Alpine = Alpine;
+  Alpine.data('shareView', shareView);
+  Alpine.start();
+</script>
+
+</body>
+</html>

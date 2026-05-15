@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trail Pace Planner</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body x-data="trailPlanner" :class="{ 'has-gpx': !!gpx }">
+
+<header class="app-header">
+  <h1>Trail Pace Planner</h1>
+  <div class="header-actions">
+    <label class="btn">
+      <input type="file" accept=".gpx" @change="onLoadGPX($event)" hidden />
+      Load GPX
+    </label>
+    <button class="btn" @click="exportJSON()" :disabled="!gpx">Export JSON</button>
+    <label class="btn" :class="{ disabled: false }">
+      <input type="file" accept=".json,application/json" @change="importJSON($event)" hidden />
+      Import JSON
+    </label>
+    <button class="btn" @click="loadPreset()" :disabled="!gpx">UTA100 preset</button>
+    <button class="btn ghost" @click="resetPlan()" :disabled="!gpx">Reset</button>
+  </div>
+</header>
+
+<template x-if="!gpx">
+  <section class="empty-state">
+    <h2>Drop in a GPX file to begin</h2>
+    <p>Use the <strong>Load GPX</strong> button above. For UTA100 by UTMB, select the file in <code>Trail-Planner/GPX/</code>.</p>
+    <p class="hint">Plans autosave to your browser. Use <strong>Export JSON</strong> to back up or share.</p>
+  </section>
+</template>
+
+<template x-if="gpx">
+  <main class="layout">
+
+    <section class="panel goal-panel">
+      <h2>Goal</h2>
+      <div class="goal-grid">
+        <label>
+          <span>Race start</span>
+          <input type="time" step="1" x-model="raceStart" @change="recompute()" />
+        </label>
+        <label>
+          <span>Goal time (h:m:s)</span>
+          <input type="text" x-model="goalTimeText" @change="onGoalTimeEdit()" placeholder="13:02:10" />
+        </label>
+        <label>
+          <span>Goal pace (m:ss/km)</span>
+          <input type="text" x-model="goalPaceText" @change="onGoalPaceEdit()" placeholder="7:49" />
+        </label>
+        <label>
+          <span>Goal GAP (m:ss/km)</span>
+          <input type="text" x-model="goalGapText" @change="onGoalGapEdit()" placeholder="7:30" />
+        </label>
+        <label>
+          <span>Split mode</span>
+          <select x-model="splitMode" @change="rebuildSegments()">
+            <option value="1km">1 km</option>
+            <option value="0.5km">0.5 km</option>
+            <option value="5km">5 km</option>
+          </select>
+        </label>
+      </div>
+      <div class="goal-summary">
+        <div><strong x-text="formatDistance(gpx.totalDistanceKm)"></strong> total</div>
+        <div>Gain <strong x-text="Math.round(gpx.totalGainM) + ' m'"></strong></div>
+        <div>Loss <strong x-text="Math.round(gpx.totalLossM) + ' m'"></strong></div>
+        <div>Finish ETA <strong x-text="finishETA"></strong></div>
+        <div :class="{ 'edit-flag': overrides.length > 0 }">Edits <strong x-text="overrides.length"></strong></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Map</h2>
+      <div id="map"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Elevation Profile</h2>
+      <div class="chart-wrap">
+        <canvas id="elevation-chart"></canvas>
+      </div>
+      <div class="legend">
+        <span><i class="sw flat"></i>&lt;3%</span>
+        <span><i class="sw mod"></i>3-7%</span>
+        <span><i class="sw steep"></i>7-12%</span>
+        <span><i class="sw severe"></i>&gt;12%</span>
+        <span><i class="sw down"></i>downhill</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>ETA over time</h2>
+      <div class="chart-wrap">
+        <canvas id="eta-chart"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Cumulative pace</h2>
+      <div class="chart-wrap">
+        <canvas id="cumpace-chart"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Checkpoints</h2>
+      <table class="cp-table">
+        <thead>
+          <tr><th>#</th><th>Name</th><th>km</th><th>From prev</th><th>ETA</th><th>Notes</th><th></th></tr>
+        </thead>
+        <tbody>
+          <template x-for="(cp, i) in checkpoints" :key="cp.id">
+            <tr>
+              <td x-text="cp.id"></td>
+              <td><input type="text" x-model="cp.name" @change="recompute()" /></td>
+              <td><input type="number" step="0.1" min="0" :max="gpx.totalDistanceKm" x-model.number="cp.km" @change="recompute()" /></td>
+              <td x-text="i === 0 ? cp.km.toFixed(1) : (cp.km - checkpoints[i-1].km).toFixed(1)"></td>
+              <td x-text="checkpointETAs[i] || '—'"></td>
+              <td><input type="text" x-model="cp.notes" /></td>
+              <td><button class="btn-x" @click="removeCheckpoint(i)" title="Remove">×</button></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <button class="btn small" @click="addCheckpoint()">+ Add checkpoint</button>
+    </section>
+
+    <section class="panel grid-panel">
+      <h2>Per-segment plan</h2>
+      <p class="hint">Edit a GAP cell to anchor that segment. Cells between anchors interpolate linearly. Click ↺ to clear an anchor.</p>
+      <div class="grid-scroll">
+        <table class="seg-grid">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>km</th>
+              <th>dist</th>
+              <th>gain</th>
+              <th>loss</th>
+              <th>net</th>
+              <th>grade</th>
+              <th>GAP</th>
+              <th>pace</th>
+              <th>cum</th>
+              <th>ETA</th>
+              <th>CP</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="(seg, i) in segments" :key="seg.idx">
+              <tr
+                :class="{ hovered: hoverKm !== null && hoverKm >= seg.startKm && hoverKm < seg.endKm, 'has-cp': segCheckpoint(seg) }"
+                :data-seg-idx="seg.idx"
+                @mouseenter="setHover(seg.startKm + seg.distKm/2)"
+                @mouseleave="setHover(null)"
+              >
+                <td x-text="seg.idx + 1"></td>
+                <td x-text="seg.startKm.toFixed(1) + '–' + seg.endKm.toFixed(1)"></td>
+                <td x-text="seg.distKm.toFixed(2)"></td>
+                <td class="num gain" x-text="seg.gainM > 0 ? '+' + Math.round(seg.gainM) : '0'"></td>
+                <td class="num loss" x-text="seg.lossM > 0 ? '-' + Math.round(seg.lossM) : '0'"></td>
+                <td class="num" x-text="(seg.netM >= 0 ? '+' : '') + Math.round(seg.netM)"></td>
+                <td class="num grade" :class="gradeClass(seg.avgGradePct)" x-text="seg.avgGradePct.toFixed(1) + '%'"></td>
+                <td>
+                  <input
+                    type="text"
+                    class="gap-cell"
+                    :class="{ edited: isOverride(seg.idx) }"
+                    :value="formatPace(segGaps[i])"
+                    @change="onGapEdit(seg.idx, $event)"
+                  />
+                </td>
+                <td x-text="formatPace(segPaces[i])"></td>
+                <td x-text="formatTime(segCumSec[i])"></td>
+                <td x-text="segETAs[i]"></td>
+                <td x-text="segCheckpoint(seg)?.id || ''" :title="segCheckpoint(seg)?.name || ''"></td>
+                <td>
+                  <button class="btn-x" x-show="isOverride(seg.idx)" @click="clearOverride(seg.idx)" title="Clear anchor">↺</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</template>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script type="module">
+  import Alpine from 'https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm.js';
+  import { trailPlannerComponent } from './src/app.js';
+  window.Alpine = Alpine;
+  Alpine.data('trailPlanner', trailPlannerComponent);
+  Alpine.start();
+</script>
+
+</body>
+</html>

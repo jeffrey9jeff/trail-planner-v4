@@ -1,0 +1,25 @@
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor cruft
+.vscode/
+.idea/
+*.swp
+*~
+
+# Backup / scratch
+*.bak
+*.tmp
+__scratch__/
+
+# Personal reference material — never published. Local-only testing
+# (prior-run .fit, planning xlsx, screenshots).
+examples&reference-materials/
+~$*.xlsx
+~$*.xls
+*.fit
+HANDOVER.md
+HANDOVER-spectator-share.md
+PROMPT-spectator-share.md

@@ -1,0 +1,1414 @@
+:root {
+  --bg: #0e1116;
+  --panel: #161b22;
+  --panel-2: #1f2530;
+  --border: #2a3140;
+  --border-faint: rgba(127, 127, 127, 0.22);
+  --fg: #e6edf3;
+  --fg-dim: #9aa6b2;
+  --accent: #ff8c42;
+  --accent-2: #58a6ff;
+  --edit: #ffd166;
+  --good: #6bcf7f;
+  --warn: #f0a868;
+  --hot: #e95569;
+  --cool: #5fa8d3;
+  --shadow: 0 1px 0 rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.25);
+  --grade-flat: #6bcf7f;
+  --grade-mod: #ffd166;
+  --grade-steep: #f0a868;
+  --grade-severe: #e95569;
+  --grade-down: #5fa8d3;
+  --hover-row: rgba(255, 140, 66, 0.12);
+  --tooltip-bg: rgba(20, 26, 35, 0.92);
+  --tooltip-border: rgba(255, 209, 102, 0.5);
+  --cp-row-bg: rgba(88, 166, 255, 0.10);
+  --dropdown-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  --alert-bg: rgba(255, 209, 102, 0.10);
+  --alert-border: rgba(255, 209, 102, 0.5);
+}
+
+body.light-mode {
+  --bg: #f6f8fa;
+  --panel: #ffffff;
+  --panel-2: #f0f3f6;
+  --border: #d0d7de;
+  --border-faint: rgba(80, 90, 105, 0.22);
+  --fg: #24292f;
+  --fg-dim: #57606a;
+  --accent: #d4541b;
+  --accent-2: #0969da;
+  --edit: #b8860b;
+  --good: #1a7f37;
+  --warn: #c69026;
+  --hot: #cf222e;
+  --cool: #0969da;
+  --shadow: 0 1px 0 rgba(31,35,40,0.04), 0 3px 6px rgba(140,149,159,0.15);
+  --grade-flat: #1a7f37;
+  --grade-mod: #b8860b;
+  --grade-steep: #c69026;
+  --grade-severe: #cf222e;
+  --grade-down: #0969da;
+  --hover-row: rgba(212, 84, 27, 0.10);
+  --tooltip-bg: rgba(255, 255, 255, 0.96);
+  --tooltip-border: rgba(184, 134, 11, 0.55);
+  --cp-row-bg: rgba(9, 105, 218, 0.10);
+  --dropdown-shadow: 0 8px 24px rgba(31,35,40,0.18);
+  --alert-bg: rgba(184, 134, 11, 0.10);
+  --alert-border: rgba(184, 134, 11, 0.55);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* The whole sticky-top wrapper (header + summary bar) sticks as one unit at
+   the top of the viewport so both stay visible while scrolling. */
+.sticky-top {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--bg);
+}
+.app-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.app-header h1 { margin: 0; font-size: 16px; font-weight: 600; color: var(--fg); }
+.header-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  background: var(--panel-2);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s, border-color 0.1s;
+}
+.btn:hover:not(:disabled):not(.disabled) { background: var(--border); border-color: var(--accent-2); }
+.btn:disabled, .btn.disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.ghost { background: transparent; }
+.btn.icon { padding: 6px 10px; font-size: 16px; }
+.btn.icon.symbol { font-weight: 900; font-size: 20px; line-height: 1; padding: 2px 12px; min-width: 32px; }
+.btn.small { padding: 4px 10px; font-size: 12px; margin-top: 8px; }
+.btn.small.inline { margin: 0; }
+.btn-x {
+  background: transparent; border: none; color: var(--fg-dim);
+  cursor: pointer; font-size: 14px; padding: 0 6px;
+  border-radius: 4px;
+}
+.btn-x:hover { color: var(--accent); background: var(--panel-2); }
+.btn-x.clear-btn {
+  background: var(--panel-2); border: 1px solid var(--edit); color: var(--edit);
+  font-size: 12px; padding: 1px 6px;
+}
+.btn-x.clear-btn:hover { background: var(--edit); color: var(--bg); }
+.badge {
+  background: var(--accent); color: var(--bg);
+  border-radius: 9px; padding: 0 6px; font-size: 11px; font-weight: 700;
+  min-width: 16px; text-align: center;
+}
+.caret {
+  display: inline-block; font-size: 10px;
+  transform: translateY(-1px);
+  color: var(--accent-2);
+  margin-left: 2px;
+}
+
+/* Dropdowns */
+.dropdown { position: relative; }
+.dropdown-panel {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 2000;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--dropdown-shadow);
+  padding: 12px;
+  min-width: 280px; max-width: 460px; max-height: 70vh; overflow: auto;
+}
+.dropdown-panel.wide { width: 420px; max-width: 90vw; }
+.dropdown-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.dropdown-header strong { color: var(--fg); }
+.dropdown-header small { color: var(--fg-dim); }
+.dropdown-empty { color: var(--fg-dim); font-size: 12px; padding: 8px 0; text-align: center; }
+
+.task-list {
+  list-style: none; margin: 0; padding: 0;
+  max-height: 340px; overflow: auto;
+}
+.task-list li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px; border-bottom: 1px solid var(--border-faint);
+  font-size: 13px;
+}
+.task-list li.done span { text-decoration: line-through; color: var(--fg-dim); }
+.task-list li input[type="checkbox"] { accent-color: var(--accent); flex: 0 0 auto; }
+.task-list li span { flex: 1 1 auto; cursor: text; }
+.task-input {
+  width: 100%; margin-top: 8px; padding: 6px 8px;
+  background: var(--panel-2); border: 1px solid var(--border-faint); color: var(--fg);
+  border-radius: 4px; font: inherit;
+}
+.task-input:focus { outline: 2px solid var(--accent-2); border-color: var(--accent-2); }
+
+.history-row {
+  display: flex; align-items: stretch; gap: 4px;
+  border-bottom: 1px solid var(--border-faint);
+}
+.history-restore {
+  flex: 1; text-align: left;
+  background: transparent; border: none; color: var(--fg);
+  padding: 6px 4px; cursor: pointer; font: inherit;
+  border-radius: 4px;
+}
+.history-restore:hover { background: var(--panel-2); }
+.history-restore strong { display: block; font-size: 12px; }
+.history-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--fg-dim); margin-top: 2px; }
+.history-meta em { font-style: normal; color: var(--accent-2); }
+
+.empty-state {
+  max-width: 640px; margin: 80px auto; padding: 60px 40px;
+  text-align: center;
+  background: var(--panel); border-radius: 12px; border: 2px dashed var(--border);
+}
+.empty-state.dragging {
+  border-color: var(--accent);
+  background: linear-gradient(0deg, var(--panel), var(--panel-2));
+}
+.empty-state h2 { margin-top: 0; }
+.empty-state code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: 90%; }
+.hint { color: var(--fg-dim); font-size: 12px; }
+.hint.inline { font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 6px; }
+
+.alert {
+  background: var(--alert-bg);
+  border: 1px solid var(--alert-border);
+  color: var(--fg);
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.alert strong { color: var(--edit); }
+
+.layout {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 12px; max-width: 1600px; margin: 0 auto;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.panel.collapsed .panel-body { display: none; }
+.panel-header {
+  display: flex; justify-content: flex-start; align-items: center;
+  gap: 8px;
+  cursor: pointer; user-select: none;
+  margin: 0; padding: 10px 12px;
+  font-size: 13px; font-weight: 600;
+  color: var(--fg-dim);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.panel-header:hover { color: var(--fg); }
+/* Push extras (toggles + chevron) and standalone chevrons to the right end so
+   the panel title hugs the left after the drag handle. */
+.panel-header .header-extra {
+  display: flex; align-items: center; gap: 12px;
+  text-transform: none; font-weight: 400; letter-spacing: 0;
+  margin-left: auto;
+}
+.panel-header > .chevron { margin-left: auto; }
+.panel-header .header-stats { margin-left: 16px; }
+.panel-header .chevron {
+  background: var(--panel-2);
+  border: 1px solid var(--border-faint);
+  color: var(--accent-2);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+.panel-header .chevron:hover { background: var(--accent-2); color: var(--bg); }
+.panel-body { padding: 0 12px 12px; }
+
+.inline-toggle {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--fg-dim); text-transform: none; letter-spacing: 0;
+}
+.inline-toggle input[type="checkbox"] { accent-color: var(--accent); }
+.inline-toggle select {
+  background: var(--panel-2); border: 1px solid var(--border-faint); color: var(--fg);
+  padding: 2px 4px; border-radius: 4px; font: inherit;
+}
+.cp-label-toggles { gap: 6px; flex-wrap: wrap; }
+.cp-label-toggles .toggle-group-label {
+  font-size: 10px; color: var(--fg-dim);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+.goal-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.goal-grid label { display: flex; flex-direction: column; gap: 4px; }
+.goal-grid label > span {
+  font-size: 11px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.05em;
+}
+.goal-grid input, .goal-grid select {
+  background: var(--panel-2); border: 1px solid var(--border-faint); color: var(--fg);
+  padding: 6px 8px; border-radius: 4px; font: inherit; width: 100%;
+}
+.goal-grid input:focus, .goal-grid select:focus {
+  outline: 2px solid var(--accent-2); outline-offset: -1px; border-color: var(--accent-2);
+}
+
+.num-input {
+  position: relative;
+  display: flex; align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+/* Steppers sit on the LEFT side of the input, matching across main goal,
+   scenarios, and per-segment grid cells. Numbers stay right-aligned via the
+   existing `.num` text-align so the left padding makes room for the buttons.
+   width:100% + box-sizing:border-box keeps inputs inside their table cells
+   (browsers default <input> to ~174px which would overflow narrow grid cells). */
+.num-input input {
+  padding-left: 26px !important;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+.num-input .step {
+  position: absolute; left: 4px; width: 18px; height: 13px;
+  background: var(--panel); border: 1px solid var(--border-faint);
+  color: var(--fg-dim); font-size: 8px;
+  cursor: pointer; padding: 0; border-radius: 2px;
+  display: flex; align-items: center; justify-content: center;
+}
+.num-input .step.up { top: 4px; }
+.num-input .step.dn { bottom: 4px; }
+.num-input .step:hover { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.num-input .step:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Compact variant for the per-segment grid (cells are narrow). Smaller step
+   buttons + tighter padding. Hidden by default and revealed when the cell is
+   hovered or its input is focused, so the grid stays scannable. */
+.num-input.compact input { padding-left: 16px !important; padding-right: 2px !important; }
+.num-input.compact .step {
+  width: 14px; height: 10px;
+  left: 1px; font-size: 7px;
+  background: transparent; border: none; color: var(--fg-dim);
+}
+.num-input.compact .step.up { top: 1px; }
+.num-input.compact .step.dn { bottom: 1px; }
+.num-input.compact .step:hover { background: rgba(255,255,255,0.06); color: var(--accent); border-color: transparent; }
+.seg-grid .num-input.compact .step,
+.cp-heading-row .num-input.compact .step {
+  opacity: 0; transition: opacity 0.12s ease;
+}
+.seg-grid .num-input.compact:hover .step,
+.seg-grid .num-input.compact:focus-within .step,
+.cp-heading-row .num-input.compact:hover .step,
+.cp-heading-row .num-input.compact:focus-within .step {
+  opacity: 1;
+}
+
+.slider-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px; margin-top: 12px;
+}
+.slider {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--panel-2);
+  padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-faint);
+}
+.slider > span {
+  font-size: 11px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.05em;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.slider > span em { font-style: normal; color: var(--accent); font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 13px; }
+.slider input[type="range"] { width: 100%; margin: 4px 0; accent-color: var(--accent); }
+.slider small { color: var(--fg-dim); font-size: 11px; }
+
+.goal-summary {
+  display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--fg-dim);
+}
+.goal-summary strong { color: var(--fg); font-size: 13px; }
+.edit-flag strong { color: var(--edit); }
+
+.nutrition-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.nutrition-grid label { display: flex; flex-direction: column; gap: 4px; }
+.nutrition-grid label > span {
+  font-size: 11px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.05em;
+}
+.nutrition-grid input {
+  background: var(--panel-2); border: 1px solid var(--border-faint); color: var(--fg);
+  padding: 6px 8px; border-radius: 4px; font: inherit; width: 100%;
+}
+.nutrition-grid input:focus {
+  outline: 2px solid var(--accent-2); outline-offset: -1px; border-color: var(--accent-2);
+}
+.nutrition-grid .num-input { position: relative; }
+.nutrition-grid .num-input .unit {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-size: 11px; color: var(--fg-dim); pointer-events: none;
+}
+.nutrition-grid .num-input input { padding-right: 38px !important; }
+
+.nutrition-summary {
+  display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--fg-dim);
+}
+.nutrition-summary strong { color: var(--fg); font-size: 13px; }
+.nutrition-summary small { color: var(--fg-dim); }
+
+.sub-header {
+  margin: 18px 0 6px; font-size: 12px; font-weight: 600; color: var(--fg-dim);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+.dropbag-scroll { overflow-x: auto; }
+.dropbag-table { border-collapse: collapse; font-size: 12px; }
+.dropbag-table th {
+  text-align: left; padding: 6px 8px;
+  color: var(--fg-dim); font-weight: 600; font-size: 11px; text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  vertical-align: bottom;
+}
+.dropbag-table th.col-num,
+.dropbag-table th.col-auto { text-align: center; }
+.dropbag-table th small { display: block; font-size: 10px; font-weight: 500; color: var(--fg-dim); margin-top: 2px; }
+.dropbag-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.dropbag-table td.col-num { text-align: center; font-variant-numeric: tabular-nums; }
+.dropbag-table td.col-auto { text-align: center; }
+.dropbag-table td.col-loc { white-space: nowrap; padding-right: 12px; }
+.dropbag-table td.restock-need,
+.dropbag-table td.restock-cell { color: var(--fg-dim); }
+.dropbag-table td.restock-collected { color: var(--good); font-weight: 600; }
+.dropbag-table td.restock-collected.shortfall { color: var(--edit); }
+
+/* Fixed-width numeric columns so headings sit directly above the input boxes. */
+.dropbag-table th.col-loc, .dropbag-table td.col-loc { min-width: 220px; }
+.dropbag-table th.col-num, .dropbag-table td.col-num { width: 84px; min-width: 84px; }
+.dropbag-table th.col-auto, .dropbag-table td.col-auto { width: 42px; min-width: 42px; }
+.dropbag-table th.col-add, .dropbag-table td.col-add { width: 28px; min-width: 28px; padding: 0 2px; }
+.dropbag-table th.col-notes, .dropbag-table td.col-notes { min-width: 220px; }
+
+.dropbag-table input[type="text"], .dropbag-table input[type="number"] {
+  background: transparent; border: 1px solid var(--border-faint); color: var(--fg);
+  padding: 4px 6px; border-radius: 3px; width: 100%; font: inherit; box-sizing: border-box;
+}
+.dropbag-table input[type="number"] { text-align: center; }
+.dropbag-table input:focus { border-color: var(--accent-2); outline: none; background: var(--panel-2); }
+.dropbag-table input[type="checkbox"] { transform: scale(1.1); cursor: pointer; }
+
+/* Gel-type column header — small inputs for type name + size. */
+.dropbag-table .gel-head { display: flex; flex-direction: column; gap: 3px; align-items: stretch; }
+.dropbag-table .gel-name {
+  text-align: center; font-weight: 600; text-transform: none; font-size: 11px;
+  background: transparent; border: 1px solid var(--border-faint); color: var(--fg);
+  padding: 3px 4px; border-radius: 3px; width: 100%; box-sizing: border-box;
+}
+.dropbag-table .gel-name:focus { border-color: var(--accent-2); outline: none; }
+.dropbag-table .gel-size-row { display: flex; align-items: center; gap: 3px; justify-content: center; }
+.dropbag-table .gel-size {
+  width: 44px; text-align: center;
+  background: transparent; border: 1px solid var(--border-faint); color: var(--fg);
+  padding: 2px 3px; border-radius: 3px; font: inherit; font-size: 11px; box-sizing: border-box;
+}
+.dropbag-table .gel-size-row .unit { color: var(--fg-dim); font-size: 10px; text-transform: none; }
+.dropbag-table .gel-remove {
+  border: none; background: transparent; color: var(--fg-dim);
+  cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1;
+}
+.dropbag-table .gel-remove:hover { color: var(--edit); }
+.btn-add-col {
+  background: var(--panel-2); border: 1px dashed var(--border); color: var(--fg-dim);
+  border-radius: 4px; cursor: pointer; padding: 4px 8px; font-size: 14px; line-height: 1;
+}
+.btn-add-col:hover { color: var(--fg); border-color: var(--accent-2); }
+
+.dropbag-table tfoot td { padding: 6px 6px; border-top: 1px solid var(--border); border-bottom: none; font-weight: 600; }
+.dropbag-table tfoot tr.dropbag-need td { color: var(--fg-dim); font-weight: 500; border-top: none; }
+.dropbag-table .warn { color: var(--edit); font-weight: 600; }
+.dropbag-table .ok { color: var(--good); font-weight: 600; }
+.dropbag-table .cp-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
+}
+
+/* Gradient table grouping header — labels the GAP / Tech-GAP column groups. */
+.gradient-table .gradient-group-header th {
+  border-bottom: none; padding-bottom: 2px;
+  color: var(--accent); font-weight: 600; font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.gradient-table .gradient-group-header th[colspan] {
+  border-left: 1px solid var(--border-faint);
+  border-right: 1px solid var(--border-faint);
+  text-align: center;
+}
+.gradient-table .gradient-group-header th span {
+  color: var(--fg); font-weight: 700;
+  margin-left: 4px;
+}
+
+/* Drag-to-reorder panel handle — a small dotted icon at the start of each panel
+   header. Held + dragged onto another panel rearranges the page. The drop target
+   gets a dashed outline to telegraph where the panel will land. */
+.panel-drag {
+  display: inline-block; cursor: grab; user-select: none;
+  color: var(--fg-dim); font-size: 14px; line-height: 1;
+  padding: 0 6px; margin-right: 4px; letter-spacing: -2px;
+}
+.panel-drag:active { cursor: grabbing; }
+.panel-drag:hover { color: var(--accent); }
+.panel.drop-target { outline: 2px dashed var(--accent); outline-offset: -1px; }
+
+/* CP colour picker — a circular trigger that opens a dropdown with a system
+   colour input plus a row of preset pips taken from already-used CP colours. */
+.color-picker-dropdown { position: relative; display: inline-flex; align-items: center; }
+.color-swatch-trigger {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.25);
+  cursor: pointer; padding: 0;
+}
+.color-swatch-trigger:hover { transform: scale(1.1); }
+.color-picker-menu {
+  position: absolute; top: 24px; left: 0; z-index: 30;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  min-width: 160px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.color-picker-native { width: 100%; height: 28px; border: 1px solid var(--border-faint); border-radius: 4px; padding: 2px; cursor: pointer; background: transparent; }
+.color-picker-presets { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--border); padding-top: 8px; }
+.color-picker-label { font-size: 10px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.color-swatch-row { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.color-swatch-pip {
+  width: 16px; height: 16px; border-radius: 50%; padding: 0; cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.18);
+}
+.color-swatch-pip:hover { transform: scale(1.2); }
+.color-swatch-pip.active {
+  outline: 2px solid var(--fg);
+  outline-offset: 1px;
+}
+
+.seg-grid .restock-cell { color: var(--fg-dim); font-weight: 600; font-size: 11px; }
+
+/* Tighter column widths in the per-segment grid — the bare segment-index column
+   only ever shows a 1-3 digit integer, no need for the natural width of the word
+   "Segment". Other narrow columns get explicit minimums so the table doesn't
+   sprawl when paces are short. */
+.seg-grid .col-seg { width: 36px; min-width: 36px; }
+.seg-grid .col-km { width: 90px; min-width: 90px; }
+.seg-grid .col-dist { width: 52px; min-width: 52px; }
+.seg-grid .col-gain, .seg-grid .col-loss, .seg-grid .col-net { width: 56px; min-width: 56px; }
+.seg-grid .col-grade { width: 60px; min-width: 60px; }
+.seg-grid .col-pace { width: 68px; min-width: 68px; }
+.seg-grid .col-time { width: 80px; min-width: 80px; }
+.seg-grid .col-tech { width: 64px; min-width: 64px; }
+.seg-grid .col-mode { width: 50px; min-width: 50px; }
+.seg-grid .col-extra { width: 88px; min-width: 88px; }
+
+/* How-To dropdown — section list with short tagline + expandable detail. */
+/* Inline stats next to a panel header — used by the Per-segment pace chart to show
+   overall moving / elapsed / pace / GAP at a glance. */
+.header-stats {
+  display: inline-flex; gap: 14px; margin-left: 16px; align-items: center;
+  font-size: 12px; color: var(--fg-dim); font-weight: 500;
+}
+.header-stats strong { color: var(--fg); margin-left: 2px; font-weight: 600; font-size: 12px; }
+
+.howto-panel { min-width: 380px; max-width: 520px; }
+.howto-item {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-faint);
+}
+.howto-item:last-child { border-bottom: none; }
+.howto-row { display: flex; align-items: center; gap: 8px; }
+.howto-link {
+  background: none; border: none; color: var(--accent-2); cursor: pointer;
+  font: inherit; font-weight: 600; padding: 0; text-align: left; flex: 1;
+}
+.howto-link:hover { text-decoration: underline; }
+.howto-more {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1px solid var(--border-faint); background: var(--panel-2);
+  color: var(--fg-dim); font-weight: 700; line-height: 1; cursor: pointer;
+}
+.howto-more:hover { color: var(--fg); border-color: var(--accent-2); }
+.howto-short { font-size: 12px; color: var(--fg-dim); margin-top: 4px; }
+.howto-long { font-size: 12px; color: var(--fg); margin-top: 6px; line-height: 1.4; padding-top: 6px; border-top: 1px dashed var(--border-faint); }
+
+/* 3D profile sensitivity slider + legend sit inline above the canvas. */
+.p3d-controls { margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
+.p3d-controls .slider { padding: 6px 10px; }
+.p3d-controls .slider input { width: 100%; }
+.p3d-legend { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 10px; }
+.p3d-legend .legend-pill {
+  font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 8px;
+  color: rgba(0,0,0,0.78); white-space: nowrap;
+}
+
+/* Hover pill above the chart canvas — fixed position so it doesn't shift the
+   chart layout. Plain text content; Alpine x-text fills it from the per-chart
+   resolver as the user moves the cursor. */
+.chart-hover-pill {
+  display: inline-block;
+  background: rgba(13,17,23,0.92);
+  border: 1px solid #ffd166;
+  color: #f0f6fc;
+  font: 600 11px -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: 4px 8px;
+  border-radius: 5px;
+  margin-bottom: 4px;
+  min-height: 22px;
+}
+body.light-mode .chart-hover-pill { background: rgba(255,255,255,0.95); color: #1f2329; border-color: #b8860b; }
+
+/* Multi-line meta line beneath the CP id in the drop-bag Location column. */
+.dropbag-table .loc-meta {
+  display: block; font-size: 11px; color: var(--fg-dim); margin-top: 2px;
+  font-weight: 400;
+}
+.dropbag-table .loc-meta span { margin-right: 4px; }
+
+/* Force the seg grid + drop-bag table to keep their natural width when toggles
+   add columns — the panel body becomes horizontally scrollable instead of
+   compressing the columns. */
+.seg-grid .col-pace { width: 76px; min-width: 76px; }
+.seg-grid .col-time { width: 96px; min-width: 96px; }
+.dropbag-scroll { overflow-x: auto; }
+.dropbag-table { width: 100%; min-width: 1200px; }
+.dropbag-table .cp-name { font-weight: 700; }
+.dropbag-table tr.in-chain { background: rgba(106, 167, 213, 0.04); }
+
+.dropbag-table td.surplus { color: var(--good); font-weight: 600; }
+.dropbag-table td.shortfall { color: var(--edit); font-weight: 600; }
+
+/* Row action buttons for the drop-bag table — sit at the right of the location cell
+   so they line up vertically across rows regardless of CP name length. The buttons
+   keep their slot via :disabled + visibility:hidden when not relevant, so the row
+   width / right-edge stays constant whatever state they're in. */
+.dropbag-table .loc-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 22px;
+}
+.dropbag-table .loc-name { flex: 1; min-width: 0; }
+.row-actions {
+  display: inline-flex; gap: 4px; vertical-align: middle; flex-shrink: 0;
+}
+.adjust-btn {
+  background: transparent; border: 1px solid var(--border-faint); color: var(--fg-dim);
+  font: inherit; font-size: 10px; padding: 1px 6px; border-radius: 10px; cursor: pointer;
+  white-space: nowrap;
+}
+.adjust-btn:hover { border-color: var(--accent); color: var(--fg); background: rgba(255,140,66,0.10); }
+.adjust-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(255,140,66,0.10); }
+.revert-btn, .clear-btn {
+  background: transparent; border: 1px solid var(--border-faint); color: var(--fg-dim);
+  font: inherit; font-size: 10px; padding: 1px 6px; border-radius: 10px; cursor: pointer;
+  white-space: nowrap;
+}
+.revert-btn:disabled {
+  visibility: hidden;
+  cursor: default;
+}
+.revert-btn.active { color: var(--accent-2); border-color: var(--accent-2); }
+.revert-btn:hover, .clear-btn:hover { border-color: var(--accent-2); color: var(--fg); background: rgba(106,167,213,0.08); }
+.clear-btn:hover { color: var(--edit); border-color: var(--edit); }
+
+/* Hover pill: always rendered to keep panel height stable. When no hoverKm,
+   the pill shows a placeholder hint and is dimmed. */
+.chart-hover-pill.inactive {
+  background: transparent;
+  border-color: var(--border-faint);
+  color: var(--fg-dim);
+  font-weight: 500;
+  font-style: italic;
+}
+
+#map {
+  height: 420px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  position: relative;
+}
+/* V4 v4.5: drag-to-resize handle below the map. Pointer cursor + chunky
+   touch target so phones can grab it easily. Saved height applied
+   inline via :style binding on #map. */
+.map-resize-handle {
+  height: 12px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: ns-resize; user-select: none;
+  color: var(--fg-dim); font-size: 10px;
+  background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.04));
+  border: 1px dashed transparent;
+  border-radius: 0 0 4px 4px;
+  margin-top: 2px;
+  touch-action: none;
+}
+.map-resize-handle:hover {
+  border-color: var(--border-faint);
+  color: var(--fg);
+}
+body.resizing-map {
+  cursor: ns-resize !important;
+  user-select: none !important;
+}
+body.resizing-map * { cursor: ns-resize !important; }
+/* Hover-position label, pinned to bottom-left of the map. Keeps the route
+   unobstructed while still showing km / ETA / pace / GAP / grade live. */
+.map-hover-overlay {
+  position: absolute; left: 8px; bottom: 8px; z-index: 600;
+  background: rgba(13,17,23,0.92); color: #f0f6fc;
+  font: 600 11px -apple-system, "Segoe UI", Roboto, sans-serif;
+  border: 1px solid #ffd166; border-radius: 5px;
+  padding: 6px 10px; pointer-events: none; max-width: 70%;
+}
+body.light-mode .map-hover-overlay { background: rgba(255,255,255,0.95); color: #1f2329; border-color: #b8860b; }
+#profile3d {
+  width: 100%;
+  height: 460px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  position: relative;
+  overflow: hidden;
+}
+.profile3d-overlay {
+  position: absolute; left: 0; top: 0; right: 0;
+  pointer-events: none;
+  padding: 8px 12px;
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 11px; color: var(--fg-dim);
+}
+.profile3d-overlay .hint { background: rgba(0,0,0,0.45); padding: 4px 8px; border-radius: 4px; font-size: 11px; }
+.profile3d-overlay .hover {
+  background: rgba(0,0,0,0.55);
+  color: var(--fg);
+  border: 1px solid var(--accent-2);
+  padding: 4px 10px; border-radius: 4px;
+  font-weight: 600;
+}
+body.light-mode .profile3d-overlay .hint,
+body.light-mode .profile3d-overlay .hover { background: rgba(255,255,255,0.85); color: var(--fg); }
+
+.chart-wrap { position: relative; height: 240px; width: 100%; }
+.chart-wrap.tall { height: 360px; }
+.chart-wrap.eta { height: 320px; }
+
+.legend {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  margin-top: 6px; font-size: 11px; color: var(--fg-dim);
+}
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.sw.flat   { background: var(--grade-flat); }
+.sw.mod    { background: var(--grade-mod); }
+.sw.steep  { background: var(--grade-steep); }
+.sw.severe { background: var(--grade-severe); }
+.sw.down   { background: var(--grade-down); }
+
+.cp-table, .gradient-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cp-table th, .gradient-table th {
+  text-align: left; padding: 6px 8px;
+  color: var(--fg-dim); font-weight: 600; font-size: 11px; text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+.cp-table th.num, .gradient-table th.num { text-align: right; }
+.cp-table td, .gradient-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.cp-table input[type="text"], .cp-table input[type="number"] {
+  background: transparent; border: 1px solid var(--border-faint); color: var(--fg);
+  padding: 4px 6px; border-radius: 3px; width: 100%; font: inherit;
+}
+.cp-table input[type="number"], .cp-table .num { text-align: right; }
+.cp-table input:hover { border-color: var(--border); }
+.cp-table input:focus { border-color: var(--accent-2); outline: none; background: var(--panel-2); }
+
+.gradient-table { max-width: 600px; }
+.gradient-table .num.grade { font-weight: 600; min-width: 60px; }
+
+.grid-scroll { max-height: 600px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; }
+/* `table-layout: fixed` is the only layout mode that fully respects explicit column
+   widths — `auto` reflows them proportionally based on content, which is what was
+   making the columns shrink whenever an optional column toggled on. With `fixed`
+   each real column is pinned to its declared px width and a single empty filler
+   column at the right takes all remaining panel space. Toggling extras *adds* to
+   the table's natural width without ever touching the existing columns. */
+.seg-grid { border-collapse: collapse; font-size: 12px; width: 100%; table-layout: fixed; }
+.seg-grid .col-filler { width: auto; padding: 0; border: none; background: transparent; }
+.seg-grid thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--panel-2);
+  padding: 6px 8px; text-align: right;
+  color: var(--fg-dim); font-weight: 600; font-size: 10px; text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+.seg-grid tbody td { padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; text-align: right; }
+.seg-grid tbody td input.editable { width: 76px; }
+.seg-grid tbody tr.cp-heading-row td { text-align: left !important; padding: 6px 12px; font-size: 13px; color: var(--fg); }
+.seg-grid tbody tr.cp-heading-row td strong { color: var(--accent-2); margin-right: 4px; }
+.seg-grid tbody tr.cp-heading-row td span { color: var(--fg-dim); }
+.seg-grid tbody tr.cp-heading-row td .stop-pill {
+  background: var(--panel-2);
+  border: 1px solid var(--border-faint);
+  color: var(--fg);
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+  font-size: 12px;
+}
+.seg-grid tbody tr.cp-heading-row td .stop-pill strong { color: var(--edit); margin-left: 2px; }
+.seg-grid tbody tr.is-tech td:not(:first-child) { box-shadow: inset 0 -2px 0 rgba(240, 168, 104, 0.45); }
+.cp-table input[type="text"].num { text-align: right; }
+.cp-table input.cp-id { font-weight: 600; max-width: 60px; }
+
+.cp-insert-row td {
+  padding: 0;
+  border-bottom: none !important;
+  height: 0;
+  line-height: 0;
+  position: relative;
+}
+.cp-insert-row .btn-insert {
+  position: absolute;
+  left: 6px;
+  top: -10px;
+  width: 18px; height: 18px;
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--border-faint);
+  color: var(--fg-dim);
+  font: 700 13px/16px sans-serif;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0.25;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+  z-index: 2;
+}
+.cp-insert-row:hover .btn-insert,
+.cp-insert-row .btn-insert:hover {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.15);
+}
+
+.cp-id-cell {
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.color-swatch {
+  width: 18px; height: 18px;
+  padding: 0;
+  border: 1px solid var(--border-faint);
+  border-radius: 50%;
+  cursor: pointer;
+  background: none;
+  appearance: none;
+  flex: 0 0 auto;
+}
+.color-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+.color-swatch::-webkit-color-swatch { border: none; border-radius: 50%; }
+.color-swatch::-moz-color-swatch { border: none; border-radius: 50%; }
+
+.cp-dot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  border: 1px solid rgba(255,255,255,0.5);
+}
+
+.stop-pill .inline-stop {
+  background: transparent;
+  border: 1px solid var(--border-faint);
+  border-radius: 4px;
+  color: var(--edit);
+  font-weight: 600;
+  width: 56px;
+  padding: 1px 6px;
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.stop-pill .inline-stop:focus { border-color: var(--edit); outline: none; background: var(--panel-2); }
+.cp3d-label {
+  background: var(--panel);
+  border: 1px solid var(--accent-2);
+  color: var(--fg);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  pointer-events: none;
+}
+.cp3d-label.fin { border-color: var(--good); }
+.cp3d-label.wp { border-color: var(--cool); }
+.cp3d-label strong { color: var(--accent-2); margin-right: 2px; }
+.cp3d-label.fin strong { color: var(--good); }
+.cp3d-label.wp strong { color: var(--cool); }
+.cp3d-label span { color: var(--fg-dim); }
+.seg-grid tbody tr:nth-child(even) { background: rgba(127,127,127,0.04); }
+.seg-grid tbody tr.hovered { background: var(--hover-row) !important; }
+/* Default look kept neutral so the inline-style CP color always wins (no var override fallback). */
+.seg-grid tbody tr.has-cp { box-shadow: inset 3px 0 0 var(--accent-2); }
+.seg-grid tbody tr.cp-heading-row { border-top: 2px solid var(--accent-2); }
+/* When inline style is provided (the CP color), the inline `background-color` overrides
+   class-level shorthand backgrounds. We deliberately do NOT set a fallback `background`
+   here so a CP-tagged row's heading + body stripe colors stay consistent. */
+.cp-table tbody.cp-blank tr td input { background: rgba(255, 209, 102, 0.05); border-color: var(--edit); }
+.seg-grid .num { text-align: right; font-variant-numeric: tabular-nums; }
+.seg-grid .gain { color: var(--good); }
+.seg-grid .loss { color: var(--cool); }
+.seg-grid .grade { font-weight: 600; }
+.seg-grid .grade.g-flat   { color: var(--grade-flat); }
+.seg-grid .grade.g-mod    { color: var(--grade-mod); }
+.seg-grid .grade.g-steep  { color: var(--grade-steep); }
+.seg-grid .grade.g-severe { color: var(--grade-severe); }
+.seg-grid .grade.g-down   { color: var(--grade-down); }
+.seg-grid .grade.g-down-steep { color: #3d8bb5; }
+
+input.editable, .gap-cell, .pace-cell {
+  background: transparent;
+  border: 1px solid var(--border-faint);
+  color: var(--fg);
+  padding: 2px 4px;
+  border-radius: 3px;
+  width: 70px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+input.editable:hover, .gap-cell:hover, .pace-cell:hover { border-color: var(--border); background: var(--panel-2); }
+input.editable:focus, .gap-cell:focus, .pace-cell:focus { border-color: var(--accent-2); outline: none; background: var(--panel-2); }
+.gap-cell.edited, .pace-cell.edited, input.editable.edited { color: var(--edit); font-weight: 600; border-color: var(--edit); }
+
+.mode-controls { display: inline-flex; gap: 4px; align-items: center; }
+.mode-toggle {
+  background: var(--panel-2);
+  border: 1px solid var(--accent-2);
+  color: var(--accent-2);
+  font-size: 11px; font-weight: 700;
+  width: 22px; height: 22px;
+  border-radius: 4px; padding: 0; cursor: pointer;
+}
+.mode-toggle.point { border-color: var(--warn); color: var(--warn); }
+.mode-toggle:hover { background: var(--accent-2); color: var(--bg); }
+.mode-toggle.point:hover { background: var(--warn); color: var(--bg); }
+
+.leaflet-tooltip.hover-tip {
+  background: var(--tooltip-bg);
+  border: 1px solid var(--tooltip-border);
+  color: var(--fg);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+.leaflet-tooltip.hover-tip::before { display: none; }
+
+/* === V3 sticky summary bar ===
+   Pinned to the top of the viewport (`position: sticky; top: 0` at body
+   level so it survives scrolling regardless of panel layout). Mirrors the
+   goal-summary chips + per-segment-pace stats so the user always sees moving
+   / elapsed time, pace, GAP, and edit counts no matter which panel they're
+   scrolled to. */
+.sticky-summary {
+  display: flex; flex-wrap: wrap; gap: 4px 14px;
+  padding: 8px 12px;
+  background: rgba(13, 17, 23, 0.96);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; color: var(--fg-dim);
+  align-items: center;
+}
+body.light-mode .sticky-summary { background: rgba(255, 255, 255, 0.96); }
+.sticky-summary .ss-cell { white-space: nowrap; }
+.sticky-summary .ss-cell strong { color: var(--fg); font-weight: 600; margin-left: 4px; }
+.sticky-summary .ss-cell.edit-flag strong { color: var(--accent); }
+.sticky-summary .ss-cell.ss-active strong { color: var(--accent); }
+.sticky-summary .ss-cell.ss-active { margin-left: auto; }
+
+/* === V3 prior-pace match button (now in the prior pace column) ===
+   The prior pace cell shows the pace text alongside a small ≈ button that
+   toggles a per-segment override matching the prior pace. Extra left padding
+   keeps a clean visual gap between the pace input cell on its left and this
+   cell's content. */
+.seg-grid td.pace-with-match {
+  padding: 4px 8px 4px 10px;
+  text-align: right;
+}
+.seg-grid td.pace-with-match .prior-pace-text {
+  display: inline-block;
+  min-width: 36px;
+  vertical-align: middle;
+}
+.seg-grid td.pace-with-match .match-prior-btn {
+  /* ≈ now sits to the LEFT of the prior pace number. */
+  margin-right: 4px;
+  margin-left: 0;
+}
+.match-prior-btn {
+  display: inline-block;
+  width: 18px; height: 18px;
+  padding: 0;
+  font-size: 12px; line-height: 16px;
+  background: transparent;
+  border: 1px solid var(--border-faint);
+  color: rgba(63, 184, 175, 0.85);
+  cursor: pointer; border-radius: 3px;
+  text-align: center;
+  vertical-align: middle;
+  font-weight: 600;
+}
+.match-prior-btn:hover { background: rgba(63, 184, 175, 0.18); color: var(--fg); }
+.match-prior-btn.active {
+  background: rgba(63, 184, 175, 0.45);
+  border-color: rgba(63, 184, 175, 0.9);
+  color: #fff;
+}
+.match-prior-batch {
+  display: inline-flex; gap: 6px; align-items: center;
+}
+.match-prior-batch .btn { padding: 3px 8px; font-size: 11px; }
+
+/* === V3 per-segment grid + stop-pill stepper styling ===
+   The actual stepper button styling lives in the universal .num-input rules
+   above (.num-input.compact for grid cells, hover-reveal for visual quiet).
+   The stop pill in CP heading rows uses an inline variant since the pill
+   content reflows — give the wrapper inline-flex rather than block. */
+.stop-pill .num-input.compact.inline-stop-wrap {
+  display: inline-flex; vertical-align: middle;
+  margin-left: 2px; width: 64px;
+}
+.stop-pill .num-input.compact.inline-stop-wrap input { width: 100%; }
+
+/* === V3 scenarios grid (Goal & biases) ===
+   Plan A is the primary input row at the top of the goal panel; Plan B/C and
+   Prior race stack below in matching layout. Each row uses CSS grid for
+   column alignment. The shared Race Start + Split Size live below the sliders
+   in `.shared-goal-inputs` (renders inline beneath the slider row). */
+.scenarios-grid {
+  display: flex; flex-direction: column; gap: 4px;
+  margin-bottom: 12px;
+}
+.scenarios-row {
+  display: grid;
+  grid-template-columns: 24px minmax(120px, 1fr) repeat(3, minmax(140px, 1fr)) minmax(80px, 110px) 28px;
+  gap: 8px; align-items: center;
+  padding: 4px 4px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+.scenarios-row.scenarios-header {
+  font-size: 10px; color: var(--fg-dim);
+  text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  padding-bottom: 0;
+}
+.scenarios-row.scenarios-header span { padding: 0 6px; }
+/* Right-align the numeric column headers (Time / Pace / GAP / Stoppage) so
+   they line up with the right-aligned values in each scenario row. */
+.scenarios-row.scenarios-header span:nth-child(3),
+.scenarios-row.scenarios-header span:nth-child(4),
+.scenarios-row.scenarios-header span:nth-child(5),
+.scenarios-row.scenarios-header span:nth-child(6) {
+  text-align: right;
+}
+.scenarios-row.active {
+  background: rgba(88, 166, 255, 0.06);
+  border-color: rgba(88, 166, 255, 0.25);
+}
+.scenarios-row.disabled { opacity: 0.5; }
+.scenarios-row.disabled input { pointer-events: none; }
+.scenarios-row .col-radio { display: flex; justify-content: center; align-items: center; }
+.scenarios-row .col-radio input[type="radio"] { width: 16px; height: 16px; cursor: pointer; }
+.scenarios-row .col-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.scenarios-row .col-name strong { color: var(--fg); font-weight: 600; }
+.scenarios-row .col-name em { color: var(--fg-dim); font-style: normal; font-size: 11px; }
+.scenarios-row .col-name em.hint { font-style: italic; }
+.scenarios-row .col-input { min-width: 0; }
+.scenarios-row .col-input.num-readonly {
+  text-align: right; padding: 4px 8px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+.scenarios-row .col-act { display: flex; justify-content: center; }
+.scenarios-row .col-act .btn-x { padding: 0 6px; font-size: 14px; }
+.scenarios-row input.scenario-name {
+  width: 100%;
+  background: transparent; border: 1px solid transparent; color: var(--fg);
+  padding: 4px 6px; border-radius: 3px; font: inherit;
+}
+.scenarios-row input.scenario-name:hover { border-color: var(--border-faint); background: var(--panel-2); }
+.scenarios-row input.scenario-name:focus { outline: none; border-color: var(--accent-2); background: var(--panel-2); }
+.scenarios-row.active input.scenario-name { color: var(--accent); font-weight: 600; }
+.scenarios-row .num-input { width: 100%; }
+.scenarios-row .num-input input {
+  width: 100%; box-sizing: border-box;
+  background: var(--panel-2); border: 1px solid var(--border-faint);
+  color: var(--fg);
+  padding: 6px 4px 6px 28px !important;
+  border-radius: 3px; font: inherit; text-align: right;
+}
+.scenarios-row .num-input input:focus {
+  outline: 2px solid var(--accent-2); outline-offset: -1px;
+  border-color: var(--accent-2);
+}
+
+/* Race Start + Split Size — shared across all scenarios, shown below the
+   slider row. Uses the same goal-grid two-up layout style for consistency
+   with the original main inputs. */
+.shared-goal-inputs {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px; margin-top: 14px;
+}
+.shared-goal-inputs label { display: flex; flex-direction: column; gap: 4px; }
+.shared-goal-inputs label > span {
+  font-size: 11px; color: var(--fg-dim);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.shared-goal-inputs input, .shared-goal-inputs .num-input input {
+  background: var(--panel-2); border: 1px solid var(--border-faint); color: var(--fg);
+  padding: 6px 8px; border-radius: 4px; font: inherit; width: 100%;
+}
+.scenario-table tr.active {
+  background: rgba(88, 166, 255, 0.08);
+}
+.scenario-table tr.active td.col-name strong { color: var(--accent); }
+.scenario-table tr.disabled { opacity: 0.5; }
+.scenario-table tr.disabled input { pointer-events: none; }
+
+/* === V3 prior-run overlay === */
+/* Header pill that appears next to the file-load buttons once a prior run is
+   loaded. Shows the activity name and finish time with an inline clear (×). */
+.prior-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: 4px;
+  background: rgba(63, 184, 175, 0.14);
+  border: 1px solid rgba(63, 184, 175, 0.5);
+  color: var(--fg);
+  font-size: 11px;
+}
+.prior-badge strong { font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prior-badge small { color: var(--fg-dim); font-size: 10px; }
+.prior-badge .btn-x { padding: 0 4px; font-size: 13px; line-height: 1; }
+
+.prior-toggle { color: rgba(63, 184, 175, 0.95); }
+.prior-toggle.disabled { opacity: 0.4; cursor: not-allowed; }
+.prior-toggle.disabled input { pointer-events: none; }
+.prior-toggle em { color: var(--fg-dim); font-style: normal; font-size: 10px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prior-hr-toggle { color: rgba(244, 114, 182, 0.95); }
+.prior-hr-toggle.disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Hover table above the segpace + cumpace charts. Headings on top row, then
+   one row for the active goal scenario and (when prior loaded) one row for
+   the prior race. Each cell shows pace / GAP / grade / HR aligned in a 5-6
+   column grid. */
+.chart-hover-table {
+  width: 100%; border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 11px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-faint);
+  border-radius: 4px; overflow: hidden;
+}
+.chart-hover-table.inactive { opacity: 0.55; }
+.chart-hover-table th, .chart-hover-table td {
+  padding: 4px 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.chart-hover-table thead th {
+  color: var(--fg-dim); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-faint);
+  font-weight: 600;
+}
+.chart-hover-table tbody th {
+  text-align: left; color: var(--fg);
+  font-weight: 600; width: 60px;
+}
+.chart-hover-table tr.row-goal td { color: var(--fg); }
+.chart-hover-table tr.row-prior th,
+.chart-hover-table tr.row-prior td { color: rgba(63, 184, 175, 0.95); }
+.chart-hover-table tr.row-goal { border-bottom: 1px solid var(--border-faint); }
+
+/* HR re-load hint that appears in the prior badge when the persisted prior
+   is from before HR support landed (older priorRun has no hrBpm). */
+.prior-badge .hr-hint {
+  color: rgba(244, 114, 182, 0.95);
+  font-style: normal; font-size: 10px;
+  cursor: help;
+}
+
+/* Adjust + revert + clear now have their own columns so the master "↻ adjust
+   all" / "clear all" buttons sit directly above their per-row counterparts.
+   Each action column is narrow but wide enough to fit its button. */
+.dropbag-table th.col-action,
+.dropbag-table td.col-action {
+  text-align: center; padding: 4px 6px; vertical-align: middle;
+  white-space: nowrap;
+}
+.dropbag-table .col-adjust { width: 80px; min-width: 80px; }
+.dropbag-table .col-revert { width: 60px; min-width: 60px; }
+.dropbag-table .col-clear  { width: 56px; min-width: 56px; }
+.dropbag-table th.col-action { font-size: 10px; }
+.adjust-all-btn,
+.clear-all-btn {
+  background: var(--panel-2); border: 1px solid var(--border-faint);
+  color: var(--fg-dim); padding: 2px 6px; border-radius: 3px;
+  font-size: 10px; font-weight: 600; text-transform: none; letter-spacing: 0;
+  cursor: pointer; white-space: nowrap;
+}
+.adjust-all-btn:hover,
+.clear-all-btn:hover { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.adjust-all-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+/* Prior-stop column in the CP table — rose tint to mirror the prior HR theme. */
+.cp-table th.prior-stop-col,
+.cp-table td.prior-stop-col {
+  color: rgba(63, 184, 175, 0.95);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Prior HR cell in per-segment grid — rose tint matching the chart line. */
+.seg-grid td.col-prior-hr,
+.seg-grid th.col-prior-hr {
+  color: rgba(244, 114, 182, 0.95);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Prior race statistic columns in the pace-by-gradient table. Lighter weight
+   to visually separate from the editable plan columns on the left. */
+.gradient-table .prior-stats-group {
+  text-align: center; color: rgba(63, 184, 175, 0.95);
+  border-left: 1px solid var(--border-faint);
+}
+.gradient-table th.prior-stats-cell,
+.gradient-table td.prior-stats-cell {
+  font-size: 11px; color: var(--fg-dim);
+  text-align: right; padding: 4px 6px;
+  border-left: 1px dashed transparent;
+  font-variant-numeric: tabular-nums;
+}
+.gradient-table th.prior-stats-cell:first-of-type,
+.gradient-table td.prior-stats-cell:first-of-type {
+  border-left-style: solid; border-left-color: var(--border-faint);
+}
+
+/* Per-segment grid prior-pace cell tinting. Green = prior was faster than the
+   plan at that segment; red = slower. Matches the grade legend colours at low
+   alpha so dark-mode contrast stays readable. */
+.seg-grid td.col-prior { color: var(--fg-dim); }
+.seg-grid td.col-prior.prior-faster { background: rgba(107, 207, 127, 0.20); color: #4caf50; font-weight: 600; }
+.seg-grid td.col-prior.prior-slower { background: rgba(233, 85, 105, 0.20); color: #e95569; font-weight: 600; }
+body.light-mode .seg-grid td.col-prior.prior-faster { background: rgba(76, 175, 80, 0.18); color: #2e7d32; }
+body.light-mode .seg-grid td.col-prior.prior-slower { background: rgba(211, 47, 47, 0.16); color: #b71c1c; }
+
+/* === V4 v4.2: Per-scenario pace shift bar ========================== */
+.pace-shift-row {
+  display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: rgba(255, 140, 66, 0.04);
+  border: 1px solid rgba(255, 140, 66, 0.18);
+  border-radius: 8px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.pace-shift-label {
+  display: flex; flex-direction: column; gap: 1px;
+  min-width: 86px;
+}
+.pace-shift-label span:first-child {
+  font-weight: 600; color: var(--fg);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.pace-shift-label em.hint {
+  font-style: normal; color: var(--fg-dim); font-size: 10px;
+}
+.pace-shift-segmented {
+  display: inline-flex; border: 1px solid var(--panel-border);
+  border-radius: 6px; overflow: hidden;
+}
+.pace-shift-segmented button {
+  background: transparent; border: none; color: var(--fg-dim);
+  padding: 5px 10px; font-size: 11px; cursor: pointer;
+  white-space: nowrap;
+}
+.pace-shift-segmented button.active {
+  background: var(--accent); color: #fff; font-weight: 600;
+}
+.pace-shift-segmented button:disabled { opacity: 0.5; cursor: not-allowed; }
+.pace-shift-input {
+  width: 170px;
+  flex: 0 0 auto;
+}
+.pace-shift-input input[type="number"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pace-shift-impact {
+  color: var(--accent); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Match-A button on Plan B/C rows */
+.match-a {
+  font-size: 10px;
+  width: auto !important;
+  padding: 2px 6px;
+  margin-left: 4px;
+}
+
+/* === V4 Phase 2: Spectator points planner panel =================== */
+.spectator-blurb {
+  margin: 0 0 10px; color: var(--fg-dim);
+  font-size: 12px; line-height: 1.4;
+}
+.spectator-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 12px; margin-bottom: 8px;
+}
+.spectator-table th {
+  text-align: left; padding: 6px 8px;
+  color: var(--fg-dim); font-weight: 600;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--panel-border);
+}
+.spectator-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--panel-border);
+  vertical-align: middle;
+}
+.spectator-table td.num {
+  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.spectator-table input[type="text"], .spectator-table input[type="number"] {
+  width: 100%; padding: 4px 6px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--fg); font-size: 12px;
+}
+.spectator-empty {
+  text-align: center; color: var(--fg-dim); padding: 12px;
+  font-style: italic;
+}
+
+/* === V4 Phase 1: Share & go live panel ============================ */
+.share-panel-inner { display: flex; flex-direction: column; gap: 10px; }
+.share-blurb {
+  margin: 0; color: var(--fg-dim);
+  font-size: 12px; line-height: 1.4;
+}
+.share-actions {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.share-actions .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.share-actions .btn.primary:hover:not(:disabled) {
+  background: #ff7a2b; border-color: #ff7a2b;
+}
+.share-status {
+  color: var(--fg-dim); font-size: 12px;
+}
+.share-error {
+  color: #ff7a7a; font-size: 12px; font-weight: 600;
+}
+.share-url-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.share-url-row input[type="text"] {
+  flex: 1; min-width: 220px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+}
+.share-export-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 10px;
+  background: rgba(255, 140, 66, 0.05);
+  border: 1px dashed rgba(255, 140, 66, 0.25);
+  border-radius: 6px;
+}
+.share-meta-row {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  font-size: 12px; color: var(--fg-dim);
+}
+.share-meta-label {
+  display: flex; align-items: center; gap: 6px;
+}
+.share-meta-label input[type="date"] {
+  padding: 4px 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-size: 12px;
+}
+.share-meta-mini code {
+  background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;
+  font-size: 11px;
+}
+.share-details {
+  margin-top: 4px; padding: 8px 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.share-details summary {
+  cursor: pointer; color: var(--accent);
+  font-weight: 600; outline: none;
+}
+.share-details ul { margin: 8px 0 0 0; padding-left: 22px; color: var(--fg-dim); }
+.share-details li { margin-bottom: 4px; }
+
+@media (max-width: 900px) {
+  .header-actions { justify-content: flex-end; }
+  .app-header h1 { font-size: 14px; }
+  #map, #profile3d { height: 280px; }
+  .chart-wrap { height: 200px; }
+  .chart-wrap.tall { height: 300px; }
+  .chart-wrap.eta { height: 240px; }
+}
